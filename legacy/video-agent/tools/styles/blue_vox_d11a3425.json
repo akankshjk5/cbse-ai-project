@@ -1,0 +1,37 @@
+{
+    "name": "blue_vox_d11a3425",
+    "description": "A collage-style educational aesthetic featuring a monochromatic photograph with blue painted accents, subtle grid lines, and hand-drawn typography on a textured light background, conveying historical or technical narratives with a vintage, hand-crafted feel.",
+    "prompt_template": "A vintage-style educational collage image featuring a black and white documentary photograph of {subject} in the center, framed by a subtle thin border. Artistic blue paint swashes (hex #89A3B5) are applied in a painterly manner, partially overlapping the photo and extending onto the background. Thin, hand-drawn black grid lines subtly overlay a light cream paper background (hex #F8F6F0) with a fine texture. Below the photograph, {text_section} is rendered in a casual handwritten font. If the subject implies a known brand or entity, display the brand name as clear text instead of attempting to render a complex logo, to ensure accuracy and maintain the hand-drawn aesthetic. Educational, historical, hand-crafted aesthetic, documentary photo, artistic collage.",
+    "text_section_template": "Handwritten text overlay saying '{text_overlay}' in dark gray (hex #1E1E1E), below the main image, centered, with a slight underline effect.",
+    "logo_guidelines": "Brand logos or emblems should be simplified to minimalist, hand-drawn icons if absolutely necessary, or preferably, rendered as clear, casual handwritten text (e.g., 'Google' instead of the Google logo) to ensure legibility and maintain stylistic consistency with the overall hand-crafted, educational vibe. Logos should be subtle and integrated seamlessly rather than prominently displayed.",
+    "image_style": {
+        "dimensions": {
+            "aspect_ratio": "9:16",
+            "orientation": "portrait",
+            "width": 1080,
+            "height": 1920
+        },
+        "overall_style": "Collage, vintage, educational, hand-drawn, documentary, artistic",
+        "aesthetic": "Historical documentation with a scrapbook-like, hand-crafted feel, combining monochromatic photography with expressive color accents and technical grid details.",
+        "background": {
+            "color": "#F8F6F0",
+            "texture": "Subtle fine paper texture, slightly grainy",
+            "details": "Thin, hand-drawn black grid lines overlaying the background, blue paint swashes (hex #89A3B5) applied artistically and partially overlapping the main photo frame."
+        },
+        "main_photo": {
+            "subject": "{{SUBJECT_DESCRIPTION}}",
+            "style": "Black and white documentary photography, slightly gritty, with a clean, thin border.",
+            "position": "Centered horizontally, slightly elevated vertically within the frame, with elements like paint swashes and grid lines interacting with its borders."
+        },
+        "typography": {
+            "font_family": "Handwritten sans-serif, casual but legible, reminiscent of a felt-tip pen",
+            "color": "#1E1E1E",
+            "text_content": "{{TEXT_CONTENT}}"
+        },
+        "color_palette": {
+            "background": "#F8F6F0",
+            "accent": "#89A3B5",
+            "text": "#1E1E1E"
+        }
+    }
+}

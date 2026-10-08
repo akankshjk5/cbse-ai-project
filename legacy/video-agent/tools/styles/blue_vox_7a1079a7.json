@@ -1,0 +1,37 @@
+{
+    "name": "Blue Vox 7a1079a7",
+    "description": "Minimalist, clean, artistic collage aesthetic with motion-graphic influences, featuring a dominant off-white and muted blue color palette, framed black and white photography, subtle grid lines, and expressive brushstroke accents.",
+    "prompt_template": "A visually striking, minimalist portrait image with a clean, motion-graphic aesthetic. The background is a soft, warm off-white (#F4F2E7) with a subtle paper texture. A central element is a framed, high-contrast black and white photograph depicting '{subject}'. This photograph is partially overlaid and accented by dynamic, irregular brushstrokes in a muted dusty blue (#95B2C5), giving an artistic, handmade feel. Thin, imprecise dark grey (#333333) grid lines extend from the photo frame, adding a technical, infographic touch. Below the main image, '{text_section}' is presented. If the subject implies a known brand or logo, ensure it is rendered as text rather than attempting to generate the visual logo, for example, 'Apple' instead of the Apple logo.",
+    "text_section_template": "Text overlay: '{text_overlay}' rendered in a hand-drawn, slightly irregular sans-serif font, dark grey (#333333) color, centered below the main visual element. The text should have a subtle, hand-drawn underline effect.",
+    "logo_guidelines": "Brand logos or emblems should be avoided. If a brand needs to be represented, render its name clearly as text using the style's typography. If an icon is absolutely necessary, it should be extremely simplified, flat, and monochromatic (using the accent blue or text color), fitting the minimalist aesthetic, without complex details or gradients.",
+    "image_style": {
+        "dimensions": {
+            "aspect_ratio": "9:16",
+            "orientation": "portrait",
+            "width": 1080,
+            "height": 1920
+        },
+        "overall_style": "Minimalist, clean, artistic collage with motion-graphic influences.",
+        "aesthetic": "Modern, engaging, slightly vintage yet contemporary, with a handcrafted feel.",
+        "background": {
+            "color": "#F4F2E7",
+            "texture": "Subtle paper texture, matte finish",
+            "details": "Clean, uncluttered, with sparse grid line elements extending from the central photo frame."
+        },
+        "main_photo": {
+            "subject": "{{SUBJECT_DESCRIPTION}}",
+            "style": "High-contrast black and white photograph, slightly desaturated, with a classic, documentary feel. Framed with sharp edges, partially obscured/accented by brushstrokes.",
+            "position": "Centered, occupying approximately 60% of the vertical canvas height, with significant negative space above and below."
+        },
+        "typography": {
+            "font_family": "Hand-drawn sans-serif, quirky, informal",
+            "color": "#333333",
+            "text_content": "{{TEXT_CONTENT}}"
+        },
+        "color_palette": {
+            "background": "#F4F2E7",
+            "accent": "#95B2C5",
+            "text": "#333333"
+        }
+    }
+}

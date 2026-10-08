@@ -1,0 +1,50 @@
+{
+    "name": "Vox Editorial",
+    "description": "Modern Vox-style editorial collage. Keeps the classic cream parchment background and blue accents but allows for modern color subjects, cutouts, and bold typography.",
+    "prompt_template": "9:16 portrait canvas 1080x1920px, Vox-style documentary video edit aesthetic, aged cream parchment background (#e8e4dc), full-canvas subtle hand-drawn pencil graph grid overlay at 45% opacity, high-quality detailed {subject} featured as a clean digital cutout with sharp edges, three gestural wide flat paintbrush swipes in muted steel blue (#8bafc4) at 80% opacity layered around the subject, {text_section}modern infographics aesthetic, high contrast, clean premium documentary look, no clutter",
+    "text_section_template": "bold modern sans-serif typography (Montserrat style) reading '{text_overlay}' in dark charcoal (#1a1a1a) with a subtle yellow highlight box behind it, ",
+    "image_style": {
+        "dimensions": {
+            "aspect_ratio": "9:16",
+            "orientation": "portrait",
+            "width": 1080,
+            "height": 1920
+        },
+        "overall_style": "Vox-style video edit / modern documentary collage",
+        "aesthetic": "premium, clean, informative, modern mixed-media",
+        "background": {
+            "color": "#e8e4dc",
+            "texture": "aged paper / parchment",
+            "grid_overlay": "thin pencil graph paper grid at 45% opacity"
+        },
+        "main_photo": {
+            "subject": "{{SUBJECT_DESCRIPTION}}",
+            "style": "clean digital cutout / paper cutout look",
+            "rendering": "high-quality, sharp focus, realistic textures",
+            "outline": "optional subtle white stroke or drop shadow for depth",
+            "position": "center"
+        },
+        "accent_elements": {
+            "brush_strokes": {
+                "color": "#8bafc4",
+                "style": "loose gestural swipes, layered for depth",
+                "opacity": "0.8"
+            },
+            "annotations": "subtle dotted lines, arrows, or small circular magnifiers if the subject is complex"
+        },
+        "typography": {
+            "font_family": "Montserrat / Inter / Helvetica Bold",
+            "color": "#1a1a1a",
+            "background_highlight": "muted yellow (#f2d06b) rectangular box at 90% opacity",
+            "alignment": "center",
+            "text_content": "{{TEXT_CONTENT}}"
+        },
+        "mood": "authoritative, cinematic, modern journalism, educational",
+        "color_palette": {
+            "background": "#e8e4dc",
+            "accent_blue": "#8bafc4",
+            "text": "#1a1a1a",
+            "highlight": "#f2d06b"
+        }
+    }
+}

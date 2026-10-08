@@ -1,0 +1,37 @@
+{
+    "name": "Blue Vox 804d7e0c",
+    "description": "A vintage, collage-style design featuring a central black and white photograph, accented with hand-drawn blue brush strokes, grid lines, and informal typography on a textured off-white background. Evokes a historical, artistic, or documentary feel.",
+    "prompt_template": "A vintage collage-style portrait image (9:16 aspect ratio) featuring a central, rectangular black and white photograph with slightly distressed edges, depicting '{subject}'. The photograph is overlaid with rough, hand-painted brush strokes in a muted dusty blue (#89A8BF), specifically at the top-left and right sides. The background is a textured off-white paper (#F8F5EE) with subtle grain. Overlaying the background, there are thin, hand-drawn black grid lines (#212121) appearing at the top-left and bottom-right corners of the main photograph, extending outwards. Below the central image, add a hand-drawn text overlay. If the subject involves a brand or logo, render its name as text rather than attempting to depict the logo visually for clarity and consistency. The overall aesthetic is artistic, tactile, and documentary, resembling an old archive or art school project. {text_section}",
+    "text_section_template": "The text '{text_overlay}' is rendered in a hand-drawn, informal sans-serif style using a dark grey color (#212121). The main lines of text are underlined with rough, hand-drawn horizontal lines, positioned centrally below the photograph.",
+    "logo_guidelines": "Brand logos or emblems should not be rendered visually. Instead, represent any brand identity by printing the brand's name as text in the primary hand-drawn font. If a simple, highly stylized, abstract icon is absolutely necessary, it must be simplified to a hand-drawn outline or silhouette, integrated subtly into the background grid or brush stroke elements, and match the overall vintage, artistic aesthetic. Prioritize text-based brand representation.",
+    "image_style": {
+        "dimensions": {
+            "aspect_ratio": "9:16",
+            "orientation": "portrait",
+            "width": 1080,
+            "height": 1920
+        },
+        "overall_style": "Vintage collage, hand-drawn elements, artistic, documentary",
+        "aesthetic": "Distressed, tactile, reminiscent of historical archives or art school projects, muted tones with a pop of muted blue.",
+        "background": {
+            "color": "#F8F5EE",
+            "texture": "Subtle paper texture, slight speckling or canvas-like grain.",
+            "details": "Hand-drawn grid lines in black, partially framing the central image. Rough, horizontal pencil lines below text."
+        },
+        "main_photo": {
+            "subject": "{subject}",
+            "style": "Black and white photograph, vintage, slightly distressed edges, raw or unpolished feel.",
+            "position": "Centered, slightly below the vertical middle, with blue brush strokes overlapping its corners."
+        },
+        "typography": {
+            "font_family": "Hand-drawn, informal sans-serif, resembling a casual handwritten note, with an underlined effect for emphasis.",
+            "color": "#212121",
+            "text_content": "{text_overlay}"
+        },
+        "color_palette": {
+            "background": "#F8F5EE",
+            "accent": "#89A8BF",
+            "text": "#212121"
+        }
+    }
+}

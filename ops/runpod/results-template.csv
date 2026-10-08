@@ -1,0 +1,7 @@
+profile,workflow,resolution,frames,fps,steps,seed,warmup,wall_seconds,peak_vram_mib,output_path,ffprobe_ok,visual_pass,notes
+z-image-turbo,image_z_image_turbo.json,1024x576,1,,8,42,true,,,,,,
+z-image-turbo,image_z_image_turbo.json,1024x576,1,,8,42,false,,,,,,
+wan22-5b-smoke,image_to_video_wan22_5B.json,832x480,49,16,30,42,false,,,,,,
+wan22-5b-production,image_to_video_wan22_5B.json,1280x704,81,16,30,42,false,,,,,,
+wan22-a14b-native,image_to_video_wan22_14B.json,832x480,49,16,,42,false,,,,,,
+wan22-a14b-lightx2v,image_to_video_wan22_14B-lightx2v.json,832x480,49,16,4,42,false,,,,,,

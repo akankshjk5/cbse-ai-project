@@ -1,0 +1,10 @@
+profile,workflow,resolution,frames,fps,steps,seed,warmup,wall_seconds,peak_vram_mib,output_path,ffprobe_ok,visual_pass,notes
+z-image-turbo,image-fast.json,1024x576,1,,8,42,true,472.409,20836,/workspace/lumina-benchmarks/c7159ae8-88ce-49d7-b96b-b9f710e10535.png,true,true,cold Global-volume model hydration dominated elapsed time
+z-image-turbo,image-fast.json,1024x576,1,,8,42,false,4.027,20836,/workspace/lumina-benchmarks/cdbb2af2-b358-45ce-8d7c-0a307c13942e.png,true,true,data-center prompt usable but less literal than requested
+z-image-turbo,image-fast.json,1024x576,1,,8,42,false,4.028,20836,/workspace/lumina-benchmarks/20a8f548-e456-498b-9225-0bf0a456ff8b.png,true,true,maritime prompt passed
+z-image-turbo,image-fast.json,1024x576,1,,8,42,false,4.028,20836,/workspace/lumina-benchmarks/2e18b790-55f7-43f1-b87f-276f57fcfa07.png,true,true,DNA prompt passed
+wan22-5b-smoke,video-fast.json,832x480,49,16,30,42,true,516.491,23114,/workspace/lumina-benchmarks/93b36fea-dfbc-4bc8-bf1a-6fb31cc2abc2.webm,true,true,cold Global-volume model hydration dominated elapsed time
+wan22-5b-smoke,video-fast.json,832x480,49,16,30,43,false,48.150,23114,/workspace/lumina-benchmarks/95f8136f-d346-4c16-88bb-634fd3fd2162.webm,true,true,uncached warm run; stable subject and motion; H.264 normalization passed
+wan22-5b-production,video-fast.json,1280x704,81,16,30,44,false,198.236,29258,/workspace/lumina-benchmarks/6ad358f9-9818-4b72-b03e-2eb0701153e7.webm,true,false,valid output but visible DNA deformation near final frame; keep optional rather than default
+z-image-turbo-local-cold,image-fast.json,1024x576,1,,8,45,true,16.059,20836,/workspace/lumina-benchmarks/098bee14-3bac-435a-9140-5669f430c01d.png,true,true,first request after restart using hydrated local NVMe; 29x faster than Global-volume cold load
+wan22-5b-local-cold,video-fast.json,832x480,49,16,30,46,true,58.155,23114,/workspace/lumina-benchmarks/dc8363de-60cd-42f3-9ade-4b4fb02f0826.webm,true,true,first video request after restart using hydrated local NVMe

@@ -1,0 +1,37 @@
+{
+    "name": "Blue Vox 4a2de923",
+    "description": "A minimalist, educational infographic style featuring a clean cream and blue palette, combining crisp black and white visuals with a collage-like, hand-drawn aesthetic and subtle grid lines, ideal for professional presentations.",
+    "prompt_template": "Generate a portrait-oriented minimalist infographic (aspect ratio 9:16, 1080x1920) with a clean, slightly textured cream background (#F8F5EC). Overlay thin, hand-drawn dark gray grid lines subtly on the background. Incorporate irregular, distressed paint strokes in a light slate blue (#9BB8CD) applied artistically and partially covering elements. At the center, place a rectangular, vintage-style black and white photograph of '{subject}', rendered with crisp details and a slightly faded feel, appearing like a print glued onto the background. The image should be centered vertically but positioned slightly above the bottom third, allowing ample cream border space. Below this central image, include a text overlay for '{text_section}'. If the '{subject}' implies a specific brand or a widely recognized logo, prioritize rendering the brand's name clearly as plain text within the text section or integrated into the overall design, rather than attempting to graphically reproduce the logo, to ensure accuracy and clarity.",
+    "text_section_template": "Below the main image, centered, the text '{text_overlay}' is rendered in a slightly informal, clean handwritten script. The text is dark charcoal (#2A2A2A) and is subtly underlined with a single, thin, hand-drawn line, matching the grid line style.",
+    "logo_guidelines": "Brand logos or specific emblems should not be graphically rendered in this style. Instead, if a brand or entity is crucial to the image's context, its name should be displayed as plain text, integrated cleanly into the overall minimalist design. This text should adopt the handwritten aesthetic of the 'text_section_template' or be presented as simple, clean sans-serif text, avoiding any stylized logo representations.",
+    "image_style": {
+        "dimensions": {
+            "aspect_ratio": "9:16",
+            "orientation": "portrait",
+            "width": 1080,
+            "height": 1920
+        },
+        "overall_style": "Minimalist, educational, artistic collage with hand-drawn elements, crisp visuals, and a vintage infographic feel.",
+        "aesthetic": "Clean, sophisticated, slightly informal, academic, combining photographic realism with graphic design elements.",
+        "background": {
+            "color": "#F8F5EC",
+            "texture": "Subtle paper texture with visible grain, not entirely smooth, suggesting a clean canvas.",
+            "details": "Thin, hand-drawn grid lines in dark gray (#2A2A2A), subtly layered behind other elements. Irregular, distressed paint strokes in light slate blue (#9BB8CD) overlaid artistically, some partially covering the main photo."
+        },
+        "main_photo": {
+            "subject": "{{SUBJECT_DESCRIPTION}}",
+            "style": "Centered rectangular image, black and white, vintage photographic quality, sharp focus, slightly faded feel, clean edges, appearing as if a print glued onto the background.",
+            "position": "Centered horizontally, slightly above the bottom third vertically, leaving significant top and bottom cream border space."
+        },
+        "typography": {
+            "font_family": "Informal handwritten script, clean and legible, similar to 'Journal' or 'Architects Daughter' typefaces. No serifs, slightly irregular lines.",
+            "color": "#2A2A2A",
+            "text_content": "{{TEXT_CONTENT}}"
+        },
+        "color_palette": {
+            "background": "#F8F5EC",
+            "accent": "#9BB8CD",
+            "text": "#2A2A2A"
+        }
+    }
+}

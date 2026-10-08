@@ -1,0 +1,139 @@
+{
+    "name": "Editorial Collage",
+    "description": "Vintage editorial collage / documentary poster / scrapbook journalism style with aged paper background, hand-drawn grid, and blue brush strokes.",
+    "prompt_template": "9:16 portrait canvas 1080x1920px, editorial collage documentary style, aged cream parchment background (#e8e4dc), full-canvas subtle hand-drawn pencil graph grid overlay at 45% opacity, centered rectangular black and white high-contrast grainy historical photograph of {subject}, three loose wide flat paintbrush swipes in muted steel blue (#8bafc4) at 75% opacity layered behind and in front of photo edges, {text_section}vintage analog mixed-media aesthetic, scrapbook journalism, matte finish, no digital gradients, film grain texture on photo",
+    "text_section_template": "handwritten typewriter-style centered text below photo reading '{text_overlay}' in dark brown-black (#2a2520) with hand-drawn wavy underline, ",
+    "image_style": {
+        "dimensions": {
+            "aspect_ratio": "9:16",
+            "orientation": "portrait / vertical",
+            "width": 1080,
+            "height": 1920,
+            "unit": "pixels",
+            "dpi": 72,
+            "format_use_case": "mobile screen, Instagram Reels, TikTok, YouTube Shorts"
+        },
+        "overall_style": "editorial collage / documentary poster / scrapbook journalism",
+        "aesthetic": "vintage editorial, analog mixed-media, historical documentary",
+        "technique": "layered mixed-media — photograph + hand-drawn grid + paint brush strokes + handwritten typography",
+
+        "background": {
+            "color": "#e8e4dc",
+            "texture": "aged paper / parchment — slightly uneven, warm cream",
+            "hex": "#e8e4dc",
+            "feel": "old newspaper / archival document stock"
+        },
+
+        "grid_overlay": {
+            "type": "hand-drawn thin pencil grid / graph paper lines",
+            "color": "#c0b8a8",
+            "opacity": "40–55%",
+            "line_weight_px": 1,
+            "line_spacing_px": 60,
+            "coverage": "full canvas behind all elements",
+            "style": "slightly imperfect, not perfectly straight — hand-ruled feel"
+        },
+
+        "main_photo": {
+            "type": "black and white historical photograph",
+            "color_mode": "grayscale / monochrome",
+            "contrast": "high contrast — deep blacks, bright whites",
+            "grain": "heavy film grain / analog noise overlay",
+            "finish": "matte",
+            "shape": "rectangular with hard edges — no border radius",
+            "position": "center of canvas, slightly upper-center",
+            "width_px": 820,
+            "height_px": 900,
+            "x_px": 130,
+            "y_px": 280,
+            "shadow": "none — sits flat on background",
+            "border": "none",
+            "subject": "{{SUBJECT_DESCRIPTION}}"
+        },
+
+        "brush_strokes": {
+            "count": 3,
+            "style": "wide flat paintbrush swipe — gestural, loose, imperfect",
+            "color": "#8bafc4",
+            "hex": "#8bafc4",
+            "opacity": "70–85%",
+            "finish": "semi-transparent matte watercolor / gouache feel",
+            "placement": [
+                {
+                    "position": "top-left overlapping photo top-left corner",
+                    "angle_deg": -5,
+                    "width_px": 420,
+                    "height_px": 90
+                },
+                {
+                    "position": "right side overlapping photo right edge, vertically oriented",
+                    "angle_deg": 90,
+                    "width_px": 100,
+                    "height_px": 380
+                },
+                {
+                    "position": "bottom-left overlapping photo bottom-left corner",
+                    "angle_deg": -3,
+                    "width_px": 380,
+                    "height_px": 85
+                }
+            ],
+            "layer_order": "some strokes behind photo, some in front — layered depth"
+        },
+
+        "typography": {
+            "style": "handwritten / typewriter hybrid",
+            "font_feel": "hand-lettered monospace — like typed on vintage typewriter then slightly hand-adjusted",
+            "case": "title case with mixed caps",
+            "color": "#2a2520",
+            "size_px": 52,
+            "line_height_px": 68,
+            "position": "center-bottom of canvas below photo",
+            "x_px": 540,
+            "y_px": 1480,
+            "alignment": "center",
+            "underline": "single hand-drawn underline beneath full text block",
+            "underline_style": "slightly wavy, hand-ruled, 2px weight",
+            "letter_spacing": "slightly expanded — 2–4px",
+            "text_content": "{{TEXT_CONTENT}}",
+            "font_suggestions": [
+                "Special Elite (Google Fonts)",
+                "Courier Prime",
+                "American Typewriter",
+                "Kingthings Typewriter"
+            ]
+        },
+
+        "layer_stack_bottom_to_top": [
+            "1. Cream parchment background (#e8e4dc)",
+            "2. Hand-drawn pencil grid overlay (full canvas, 40% opacity)",
+            "3. Blue brush stroke — bottom-left (behind photo)",
+            "4. Blue brush stroke — top-left (behind photo)",
+            "5. Black and white photograph (center)",
+            "6. Blue brush stroke — right side (on top of photo)",
+            "7. Handwritten typography + underline (below photo)"
+        ],
+
+        "color_palette": {
+            "background_cream": "#e8e4dc",
+            "grid_line": "#c0b8a8",
+            "brush_stroke_blue": "#8bafc4",
+            "photo_tones": "grayscale #000000 to #ffffff",
+            "text_color": "#2a2520",
+            "underline_color": "#2a2520"
+        },
+
+        "mood": "historical, documentary, editorial gravitas, analog warmth, journalistic authenticity",
+
+        "style_keywords": [
+            "editorial collage",
+            "scrapbook documentary",
+            "vintage journalism poster",
+            "mixed media analog",
+            "archival photo layout",
+            "historical infographic",
+            "newspaper art direction",
+            "gouache brush overlay"
+        ]
+    }
+}

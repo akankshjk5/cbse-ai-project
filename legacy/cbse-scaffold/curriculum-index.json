@@ -1,0 +1,32 @@
+{
+  "_info": "CBSE NCERT Dataset — Class 1 to 12 — All Subjects",
+  "_version": "1.0.0",
+  "_board": "CBSE",
+  "_authority": "NCERT",
+  "_languages": ["en", "hi"],
+
+  "classes": {
+    "1":  { "stage": "foundational",     "animationMode": "story",              "age": "6-7"  },
+    "2":  { "stage": "foundational",     "animationMode": "story",              "age": "7-8"  },
+    "3":  { "stage": "foundational",     "animationMode": "story+diagram",      "age": "8-9"  },
+    "4":  { "stage": "foundational",     "animationMode": "story+diagram",      "age": "9-10" },
+    "5":  { "stage": "preparatory",      "animationMode": "diagram",            "age": "10-11"},
+    "6":  { "stage": "preparatory",      "animationMode": "diagram",            "age": "11-12"},
+    "7":  { "stage": "preparatory",      "animationMode": "diagram",            "age": "12-13"},
+    "8":  { "stage": "secondary",        "animationMode": "professional+light", "age": "13-14"},
+    "9":  { "stage": "secondary",        "animationMode": "professional+light", "age": "14-15"},
+    "10": { "stage": "secondary",        "animationMode": "professional",       "age": "15-16"},
+    "11": { "stage": "higher-secondary", "animationMode": "minimal",            "age": "16-17"},
+    "12": { "stage": "higher-secondary", "animationMode": "minimal",            "age": "17-18"}
+  },
+
+  "subjects_by_class": {
+    "1-2":  ["evs", "maths", "english", "hindi"],
+    "3-5":  ["evs", "maths", "english", "hindi"],
+    "6-8":  ["science", "maths", "social-science", "english", "hindi", "sanskrit"],
+    "9-10": ["science", "maths", "social-science", "english", "hindi"],
+    "11-12-science":  ["physics", "chemistry", "biology", "maths", "english", "hindi"],
+    "11-12-commerce": ["accountancy", "business-studies", "economics", "maths", "english", "hindi"],
+    "11-12-arts":     ["history", "geography", "political-science", "economics", "english", "hindi"]
+  }
+}

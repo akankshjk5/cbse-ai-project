@@ -1,0 +1,37 @@
+{
+    "name": "Vox-Inspired Motion Graphics Style (1feb8ed8)",
+    "description": "A clean, minimalist motion-graphics style inspired by Vox media, featuring a dominant deep blue and cyan color palette, professional sans-serif typography, smooth data visualizations, and high-contrast instructional diagrams.",
+    "prompt_template": "A visually clean and minimalist motion-graphics style image, inspired by Vox media. The dominant color palette leans towards deep blue and cyan, with secondary colors of muted light beige and soft grey accents. The layout features a central image or graphic element: a {subject}, presented as a professional, high-contrast rendering or a black and white photograph. This central element is framed or overlaid with subtle, hand-drawn grid lines and artistic, muted blue paint brush strokes. The overall aesthetic is informative and modern. Text overlays are rendered in a professional, clean sans-serif typeface, with clear hierarchy and potentially subtle hand-drawn underline elements for emphasis. Data visualizations, if applicable, should be smooth and integrated seamlessly. If the {subject} implies a brand, render its name as clear text instead of an unidentifiable logo to ensure accuracy. {text_section}",
+    "text_section_template": "Overlay text: '{text_overlay}'. The text is clean, professional sans-serif, in dark gray (#333333), aligned to the bottom or side, with a slight handwritten underline for emphasis, similar to a marker stroke. Ensure readability against the light background.",
+    "logo_guidelines": "For brand logos or emblems, prioritize rendering the brand name as plain, professional sans-serif text (e.g., 'Google' instead of Google logo). If a simplified icon is required, it should be highly minimalist, monochromatic (dark gray), and geometrically clean, without intricate details, integrated subtly into the design rather than as a prominent brand mark.",
+    "image_style": {
+        "dimensions": {
+            "aspect_ratio": "9:16",
+            "orientation": "portrait",
+            "width": 1080,
+            "height": 1920
+        },
+        "overall_style": "Clean, minimalist, motion-graphics inspired by Vox media. Informative, high-contrast, modern documentary aesthetic with hand-drawn overlay elements for a mood board or design study feel.",
+        "aesthetic": "Professional, educational, slightly vintage scrapbook feel due to hand-drawn elements, high contrast for instructional clarity and visual impact.",
+        "background": {
+            "color": "#F8F5EC",
+            "texture": "Subtle paper texture or smooth, matte finish, resembling a light cream or beige paper.",
+            "details": "Faint, hand-drawn grid lines in dark gray (#333333) and artistic, muted blue (#8CAEC2) paint brush strokes across the frame, enhancing a layered, 'mood board' effect."
+        },
+        "main_photo": {
+            "subject": "A black and white photograph of two hands reaching through a narrow hole in a rock to shake hands, symbolizing connection or breakthrough.",
+            "style": "Black and white, high-contrast, documentary photography style, with sharp details and strong shadows. The image is presented within a clean rectangular boundary.",
+            "position": "Centered, occupying approximately 60% of the vertical height, framed by the hand-drawn elements."
+        },
+        "typography": {
+            "font_family": "Modern sans-serif (e.g., Montserrat, Open Sans, Roboto), with a clean, slightly condensed appearance for primary text. For emphasis or titles, simulate a hand-drawn marker-style sans-serif effect to match the illustrative elements.",
+            "color": "#333333",
+            "text_content": "THE BREAKTHROUGH: CHANNEL TUNNEL 1990."
+        },
+        "color_palette": {
+            "background": "#F8F5EC",
+            "accent": "#8CAEC2",
+            "text": "#333333"
+        }
+    }
+}

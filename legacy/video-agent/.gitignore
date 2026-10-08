@@ -1,0 +1,27 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+memory.json
+.env
+
+generated_videos
+video_cache
+generated_frames
+script.json
+Images
+extra
+generated_audio
+compiled_video.mp4
+output.mp4
+
+# Keep dry-run sample assets in repo
+!samples/
+!samples/dry_run/
+!samples/dry_run/**

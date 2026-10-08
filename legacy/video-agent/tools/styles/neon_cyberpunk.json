@@ -1,0 +1,135 @@
+{
+    "name": "Neon Cyberpunk",
+    "description": "Futuristic cyberpunk style with neon glows, dark backgrounds, and holographic overlays — perfect for sci-fi or tech-themed storyboards.",
+    "prompt_template": "9:16 portrait canvas 1080x1920px, cyberpunk neon poster style, deep dark navy-black background (#0a0e1a), subtle diagonal scan-line overlay at 20% opacity, centered rectangular full-color high-saturation cinematic photograph of {subject}, two neon glow strips in electric cyan (#00f0ff) and hot magenta (#ff00aa) at 80% opacity flanking the photo edges with soft light bleed, {text_section}futuristic holographic aesthetic, synthwave vibes, clean digital finish, lens flare accents, chromatic aberration on photo edges",
+    "text_section_template": "bold sans-serif glowing text below photo reading '{text_overlay}' in electric cyan (#00f0ff) with soft outer glow, ",
+    "image_style": {
+        "dimensions": {
+            "aspect_ratio": "9:16",
+            "orientation": "portrait / vertical",
+            "width": 1080,
+            "height": 1920,
+            "unit": "pixels",
+            "dpi": 72,
+            "format_use_case": "mobile screen, Instagram Reels, TikTok, YouTube Shorts"
+        },
+        "overall_style": "cyberpunk neon poster / futuristic cinematic",
+        "aesthetic": "synthwave, neon noir, digital futurism",
+        "technique": "layered digital — photograph + neon glow strips + scan-line overlay + holographic typography",
+
+        "background": {
+            "color": "#0a0e1a",
+            "texture": "deep dark navy with subtle noise grain",
+            "hex": "#0a0e1a",
+            "feel": "dark sci-fi interface / hologram backdrop"
+        },
+
+        "grid_overlay": {
+            "type": "diagonal scan-lines / CRT monitor lines",
+            "color": "#1a2040",
+            "opacity": "15–25%",
+            "line_weight_px": 1,
+            "line_spacing_px": 4,
+            "coverage": "full canvas behind all elements",
+            "style": "perfectly uniform, mechanical, digital"
+        },
+
+        "main_photo": {
+            "type": "full-color cinematic photograph",
+            "color_mode": "high saturation / vibrant",
+            "contrast": "high contrast — deep shadows, vivid highlights",
+            "grain": "minimal digital noise",
+            "finish": "glossy",
+            "shape": "rectangular with 8px border radius",
+            "position": "center of canvas, slightly upper-center",
+            "width_px": 820,
+            "height_px": 900,
+            "x_px": 130,
+            "y_px": 280,
+            "shadow": "neon glow shadow — cyan and magenta",
+            "border": "1px solid rgba(0, 240, 255, 0.4)",
+            "subject": "{{SUBJECT_DESCRIPTION}}"
+        },
+
+        "brush_strokes": {
+            "count": 2,
+            "style": "neon light strip / glow bar — sharp, clean, digital",
+            "color": "#00f0ff",
+            "secondary_color": "#ff00aa",
+            "opacity": "75–90%",
+            "finish": "glowing with soft light bleed / bloom effect",
+            "placement": [
+                {
+                    "position": "left side of photo, vertical neon strip",
+                    "angle_deg": 0,
+                    "width_px": 8,
+                    "height_px": 940,
+                    "color": "#00f0ff"
+                },
+                {
+                    "position": "right side of photo, vertical neon strip",
+                    "angle_deg": 0,
+                    "width_px": 8,
+                    "height_px": 940,
+                    "color": "#ff00aa"
+                }
+            ],
+            "layer_order": "neon strips in front of photo edges with glow bleeding outward"
+        },
+
+        "typography": {
+            "style": "bold futuristic sans-serif",
+            "font_feel": "clean geometric sans — like a HUD display or tech interface",
+            "case": "uppercase",
+            "color": "#00f0ff",
+            "size_px": 48,
+            "line_height_px": 62,
+            "position": "center-bottom of canvas below photo",
+            "x_px": 540,
+            "y_px": 1480,
+            "alignment": "center",
+            "underline": "none",
+            "glow": "soft outer glow in cyan, 12px radius",
+            "letter_spacing": "expanded — 6–8px",
+            "text_content": "{{TEXT_CONTENT}}",
+            "font_suggestions": [
+                "Orbitron (Google Fonts)",
+                "Rajdhani",
+                "Exo 2",
+                "Share Tech Mono"
+            ]
+        },
+
+        "layer_stack_bottom_to_top": [
+            "1. Deep dark navy background (#0a0e1a)",
+            "2. Diagonal scan-line overlay (full canvas, 20% opacity)",
+            "3. Full-color cinematic photograph (center)",
+            "4. Cyan neon strip — left side (on top of photo edge)",
+            "5. Magenta neon strip — right side (on top of photo edge)",
+            "6. Glowing sans-serif typography (below photo)"
+        ],
+
+        "color_palette": {
+            "background_dark": "#0a0e1a",
+            "scan_lines": "#1a2040",
+            "neon_cyan": "#00f0ff",
+            "neon_magenta": "#ff00aa",
+            "photo_tones": "high saturation full color",
+            "text_color": "#00f0ff",
+            "glow_color": "rgba(0, 240, 255, 0.5)"
+        },
+
+        "mood": "futuristic, cyberpunk, electric, high-tech, immersive, cinematic",
+
+        "style_keywords": [
+            "cyberpunk poster",
+            "neon noir",
+            "synthwave aesthetic",
+            "holographic display",
+            "sci-fi cinematic",
+            "tech interface",
+            "digital futurism",
+            "glowing neon overlay"
+        ]
+    }
+}

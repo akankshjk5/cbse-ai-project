@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+/*
+ * Class-based dark mode, not prefers-color-scheme.
+ *
+ * The theme is an explicit user choice persisted in a cookie and applied as a
+ * `dark` class on <html> during SSR (see src/app/layout.tsx). Following the OS
+ * instead would override that choice and make the toggle look broken.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/*
+ * Slide element motion.
+ *
+ * The numbers all arrive as custom properties `SlideCanvas` computes from the
+ * element's stored `motion` (see Agents/motion.ts) — so the rules live here
+ * once and every element, every effect and every intensity is the same three
+ * declarations with different variables. Writing a keyframe set per element
+ * would mean a <style> tag per slide and a different animation name in the
+ * preview than in the editor.
+ *
+ * Only elements the renderer decided should move carry `data-motion` at all,
+ * which is what keeps a thumbnail and the headless export render static
+ * without a second code path.
+ */
+@keyframes lumina-zoom {
+  from {
+    transform: scale(var(--lm-from));
+    opacity: var(--lm-fade);
+  }
+  to {
+    transform: scale(var(--lm-to));
+    opacity: 1;
+  }
+}
+
+/* Entrances run only while the stage says so — `both` holds the opening frame
+   through the delay, so a staggered element does not flash in and then animate. */
+[data-motion-play='on'] [data-motion='enter'] {
+  animation: lumina-zoom var(--lm-duration) var(--lm-easing) var(--lm-delay) both;
+}
+
+/* Hover and click rest at their real size and depart from it, so they are
+   live whenever the element is on screen rather than tied to the entrance. */
+[data-motion='hover'],
+[data-motion='click'] {
+  transform: scale(var(--lm-from));
+  transition: transform var(--lm-duration) var(--lm-easing);
+  will-change: transform;
+}
+
+[data-motion='hover']:hover,
+[data-motion='click'].lm-active {
+  transform: scale(var(--lm-to));
+}
+
+[data-motion='click'] {
+  cursor: zoom-in;
+}
+
+[data-motion='click'].lm-active {
+  cursor: zoom-out;
+}
+
+/*
+ * Someone who has asked their OS for less motion gets the deck, not the show.
+ * The composition is unchanged either way — every zoom ends at the element's
+ * laid-out size — so removing the movement removes nothing but the movement.
+ */
+@media (prefers-reduced-motion: reduce) {
+  [data-motion-play='on'] [data-motion='enter'] {
+    animation: none;
+  }
+
+  [data-motion='hover'],
+  [data-motion='click'] {
+    transform: none;
+    transition: none;
+  }
+}

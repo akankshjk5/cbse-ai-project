@@ -1,0 +1,76 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+__pycache__/
+*.py[cod]
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Keep the template committed; real .env files stay ignored above.
+!.env.example
+
+# Claude Code's local state. `.claude/skills/*` are ABSOLUTE symlinks into
+# .agents/skills on this machine, so committing them would hand every other
+# clone a set of broken paths. The skills themselves are vendored in
+# .agents/skills and pinned by skills-lock.json, which is what a fresh clone
+# actually needs; the symlinks are recreated locally.
+/.claude
+
+# agent output: generated decks, slide renders, intermediate files
+/generated
+
+# source material for the RAG corpus (NCERT textbooks, etc.) — not build output,
+# but too large/variable to commit; keep the folder via Documents/README.md
+/Documents/*
+!/Documents/README.md
+
+# RunPod worker credential (Supabase service key) used by scripts/connect-runpod.ps1
+.runpod-worker.env
+
+# ── merged-repo additions ───────────────────────────────────────────────────
+# The prototype under legacy/ is reference material and is never run from here.
+legacy/video-agent/.env
+legacy/video-agent/generated_frames/
+legacy/video-agent/generated_audio/
+legacy/video-agent/generated_videos/
+legacy/video-agent/video_cache/
+legacy/video-agent/job_runs/
+legacy/video-agent/uploads/
+legacy/video-agent/script.json
+legacy/video-agent/memory.json
