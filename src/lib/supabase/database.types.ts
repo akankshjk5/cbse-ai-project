@@ -96,6 +96,356 @@ export type Database = {
           },
         ]
       }
+      cloud_lesson_jobs: {
+        Row: {
+          attempts: number
+          available_at: string
+          cancel_requested_at: string | null
+          completed_at: string | null
+          cost_usd: number
+          created_at: string
+          error_code: string | null
+          error_message: string | null
+          heartbeat_at: string | null
+          id: string
+          kind: string
+          locked_at: string | null
+          max_attempts: number
+          negative_prompt: string
+          output_metadata: Json
+          output_url: string | null
+          owner_id: string
+          parameters: Json
+          progress: number
+          project_id: string
+          prompt: string
+          provider_request_id: string | null
+          scene_id: string | null
+          shot_id: string | null
+          source_image_url: string | null
+          started_at: string | null
+          status: string
+          updated_at: string
+          worker_id: string | null
+        }
+        Insert: {
+          attempts?: number
+          available_at?: string
+          cancel_requested_at?: string | null
+          completed_at?: string | null
+          cost_usd?: number
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          heartbeat_at?: string | null
+          id?: string
+          kind: string
+          locked_at?: string | null
+          max_attempts?: number
+          negative_prompt?: string
+          output_metadata?: Json
+          output_url?: string | null
+          owner_id: string
+          parameters?: Json
+          progress?: number
+          project_id: string
+          prompt?: string
+          provider_request_id?: string | null
+          scene_id?: string | null
+          shot_id?: string | null
+          source_image_url?: string | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          worker_id?: string | null
+        }
+        Update: {
+          attempts?: number
+          available_at?: string
+          cancel_requested_at?: string | null
+          completed_at?: string | null
+          cost_usd?: number
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          heartbeat_at?: string | null
+          id?: string
+          kind?: string
+          locked_at?: string | null
+          max_attempts?: number
+          negative_prompt?: string
+          output_metadata?: Json
+          output_url?: string | null
+          owner_id?: string
+          parameters?: Json
+          progress?: number
+          project_id?: string
+          prompt?: string
+          provider_request_id?: string | null
+          scene_id?: string | null
+          shot_id?: string | null
+          source_image_url?: string | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          worker_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cloud_lesson_jobs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "cloud_lesson_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cloud_lesson_jobs_scene_id_fkey"
+            columns: ["scene_id"]
+            isOneToOne: false
+            referencedRelation: "cloud_lesson_scenes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cloud_lesson_jobs_shot_id_fkey"
+            columns: ["shot_id"]
+            isOneToOne: false
+            referencedRelation: "cloud_lesson_shots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cloud_lesson_projects: {
+        Row: {
+          cache_key: string | null
+          class_level: number
+          completed_at: string | null
+          content_key: string | null
+          cost_breakdown: Json
+          cost_usd: number
+          created_at: string
+          error_message: string | null
+          final_video_url: string | null
+          id: string
+          language_code: string
+          learning_objective: string | null
+          narration_duration_seconds: number | null
+          narration_text: string | null
+          narration_url: string | null
+          owner_id: string
+          reused_from_project_id: string | null
+          status: string
+          subject: string
+          target_duration_seconds: number
+          title: string | null
+          topic: string
+          updated_at: string
+          visual_style: string
+        }
+        Insert: {
+          cache_key?: string | null
+          class_level: number
+          completed_at?: string | null
+          content_key?: string | null
+          cost_breakdown?: Json
+          cost_usd?: number
+          created_at?: string
+          error_message?: string | null
+          final_video_url?: string | null
+          id?: string
+          language_code: string
+          learning_objective?: string | null
+          narration_duration_seconds?: number | null
+          narration_text?: string | null
+          narration_url?: string | null
+          owner_id: string
+          reused_from_project_id?: string | null
+          status?: string
+          subject: string
+          target_duration_seconds?: number
+          title?: string | null
+          topic: string
+          updated_at?: string
+          visual_style?: string
+        }
+        Update: {
+          cache_key?: string | null
+          class_level?: number
+          completed_at?: string | null
+          content_key?: string | null
+          cost_breakdown?: Json
+          cost_usd?: number
+          created_at?: string
+          error_message?: string | null
+          final_video_url?: string | null
+          id?: string
+          language_code?: string
+          learning_objective?: string | null
+          narration_duration_seconds?: number | null
+          narration_text?: string | null
+          narration_url?: string | null
+          owner_id?: string
+          reused_from_project_id?: string | null
+          status?: string
+          subject?: string
+          target_duration_seconds?: number
+          title?: string | null
+          topic?: string
+          updated_at?: string
+          visual_style?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cloud_lesson_projects_reused_from_project_id_fkey"
+            columns: ["reused_from_project_id"]
+            isOneToOne: false
+            referencedRelation: "cloud_lesson_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cloud_lesson_scenes: {
+        Row: {
+          caption: string
+          completed_at: string | null
+          created_at: string
+          duration_seconds: number
+          error_message: string | null
+          fact: string
+          id: string
+          image_prompt: string
+          image_url: string | null
+          motion_description: string
+          motion_mode: string
+          narration: string
+          overlay: Json
+          project_id: string
+          scene_index: number
+          status: string
+          title: string | null
+          updated_at: string
+          video_prompt: string
+          video_url: string | null
+          visual_description: string
+        }
+        Insert: {
+          caption?: string
+          completed_at?: string | null
+          created_at?: string
+          duration_seconds: number
+          error_message?: string | null
+          fact: string
+          id?: string
+          image_prompt: string
+          image_url?: string | null
+          motion_description: string
+          motion_mode?: string
+          narration: string
+          overlay?: Json
+          project_id: string
+          scene_index: number
+          status?: string
+          title?: string | null
+          updated_at?: string
+          video_prompt: string
+          video_url?: string | null
+          visual_description: string
+        }
+        Update: {
+          caption?: string
+          completed_at?: string | null
+          created_at?: string
+          duration_seconds?: number
+          error_message?: string | null
+          fact?: string
+          id?: string
+          image_prompt?: string
+          image_url?: string | null
+          motion_description?: string
+          motion_mode?: string
+          narration?: string
+          overlay?: Json
+          project_id?: string
+          scene_index?: number
+          status?: string
+          title?: string | null
+          updated_at?: string
+          video_prompt?: string
+          video_url?: string | null
+          visual_description?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cloud_lesson_scenes_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "cloud_lesson_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cloud_lesson_shots: {
+        Row: {
+          camera_move: string
+          completed_at: string | null
+          created_at: string
+          id: string
+          image_prompt: string
+          image_url: string | null
+          project_id: string
+          scene_id: string
+          shot_index: number
+          shot_size: string
+          status: string
+          updated_at: string
+          visual_description: string
+        }
+        Insert: {
+          camera_move?: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          image_prompt: string
+          image_url?: string | null
+          project_id: string
+          scene_id: string
+          shot_index: number
+          shot_size: string
+          status?: string
+          updated_at?: string
+          visual_description: string
+        }
+        Update: {
+          camera_move?: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          image_prompt?: string
+          image_url?: string | null
+          project_id?: string
+          scene_id?: string
+          shot_index?: number
+          shot_size?: string
+          status?: string
+          updated_at?: string
+          visual_description?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cloud_lesson_shots_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "cloud_lesson_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cloud_lesson_shots_scene_id_fkey"
+            columns: ["scene_id"]
+            isOneToOne: false
+            referencedRelation: "cloud_lesson_scenes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deck_assets: {
         Row: {
           bucket: string
@@ -835,6 +1185,7 @@ export type Database = {
       }
       lesson_video_scenes: {
         Row: {
+          caption: string
           completed_at: string | null
           created_at: string
           duration_seconds: number
@@ -844,6 +1195,7 @@ export type Database = {
           image_prompt: string
           image_url: string | null
           narration: string
+          overlay: Json
           project_id: string
           scene_index: number
           status: string
@@ -852,6 +1204,7 @@ export type Database = {
           video_url: string | null
         }
         Insert: {
+          caption?: string
           completed_at?: string | null
           created_at?: string
           duration_seconds: number
@@ -861,6 +1214,7 @@ export type Database = {
           image_prompt: string
           image_url?: string | null
           narration: string
+          overlay?: Json
           project_id: string
           scene_index: number
           status?: string
@@ -869,6 +1223,7 @@ export type Database = {
           video_url?: string | null
         }
         Update: {
+          caption?: string
           completed_at?: string | null
           created_at?: string
           duration_seconds?: number
@@ -878,6 +1233,7 @@ export type Database = {
           image_prompt?: string
           image_url?: string | null
           narration?: string
+          overlay?: Json
           project_id?: string
           scene_index?: number
           status?: string
@@ -1198,6 +1554,41 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cancel_cloud_lesson: {
+        Args: { p_project_id: string }
+        Returns: {
+          cache_key: string | null
+          class_level: number
+          completed_at: string | null
+          content_key: string | null
+          cost_breakdown: Json
+          cost_usd: number
+          created_at: string
+          error_message: string | null
+          final_video_url: string | null
+          id: string
+          language_code: string
+          learning_objective: string | null
+          narration_duration_seconds: number | null
+          narration_text: string | null
+          narration_url: string | null
+          owner_id: string
+          reused_from_project_id: string | null
+          status: string
+          subject: string
+          target_duration_seconds: number
+          title: string | null
+          topic: string
+          updated_at: string
+          visual_style: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "cloud_lesson_projects"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       cancel_lesson_video_project: {
         Args: { p_project_id: string }
         Returns: {
@@ -1224,6 +1615,45 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "lesson_video_projects"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      claim_cloud_lesson_job: {
+        Args: { p_kinds: string[]; p_worker_id: string }
+        Returns: {
+          attempts: number
+          available_at: string
+          cancel_requested_at: string | null
+          completed_at: string | null
+          cost_usd: number
+          created_at: string
+          error_code: string | null
+          error_message: string | null
+          heartbeat_at: string | null
+          id: string
+          kind: string
+          locked_at: string | null
+          max_attempts: number
+          negative_prompt: string
+          output_metadata: Json
+          output_url: string | null
+          owner_id: string
+          parameters: Json
+          progress: number
+          project_id: string
+          prompt: string
+          provider_request_id: string | null
+          scene_id: string | null
+          source_image_url: string | null
+          started_at: string | null
+          status: string
+          updated_at: string
+          worker_id: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "cloud_lesson_jobs"
           isOneToOne: false
           isSetofReturn: true
         }
@@ -1306,6 +1736,82 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      claim_lesson_video_job_for_owner: {
+        Args: { p_owner_id: string; p_worker_id: string }
+        Returns: {
+          attempts: number
+          available_at: string
+          cancel_requested_at: string | null
+          completed_at: string | null
+          created_at: string
+          error_code: string | null
+          error_message: string | null
+          heartbeat_at: string | null
+          id: string
+          kind: string
+          locked_at: string | null
+          max_attempts: number
+          negative_prompt: string
+          output_metadata: Json
+          output_url: string | null
+          owner_id: string
+          parameters: Json
+          profile: string
+          progress: number
+          project_id: string
+          prompt: string
+          scene_id: string | null
+          source_image_url: string | null
+          started_at: string | null
+          status: string
+          updated_at: string
+          worker_id: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "lesson_video_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      claim_lesson_video_job_for_projects: {
+        Args: { p_project_ids: string[]; p_worker_id: string }
+        Returns: {
+          attempts: number
+          available_at: string
+          cancel_requested_at: string | null
+          completed_at: string | null
+          created_at: string
+          error_code: string | null
+          error_message: string | null
+          heartbeat_at: string | null
+          id: string
+          kind: string
+          locked_at: string | null
+          max_attempts: number
+          negative_prompt: string
+          output_metadata: Json
+          output_url: string | null
+          owner_id: string
+          parameters: Json
+          profile: string
+          progress: number
+          project_id: string
+          prompt: string
+          scene_id: string | null
+          source_image_url: string | null
+          started_at: string | null
+          status: string
+          updated_at: string
+          worker_id: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "lesson_video_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       claim_media_job: {
         Args: { p_worker_id: string }
         Returns: {
@@ -1344,6 +1850,31 @@ export type Database = {
         }
       }
       clerk_user_id: { Args: never; Returns: string }
+      complete_cloud_lesson_job: {
+        Args: {
+          p_cost_usd?: number
+          p_job_id: string
+          p_output_metadata?: Json
+          p_output_url: string
+          p_worker_id: string
+        }
+        Returns: boolean
+      }
+      complete_cloud_lesson_preparation: {
+        Args: {
+          p_cost_usd?: number
+          p_job_id: string
+          p_learning_objective: string
+          p_narration_duration_seconds: number
+          p_narration_text: string
+          p_narration_url: string
+          p_output_metadata?: Json
+          p_scenes: Json
+          p_title: string
+          p_worker_id: string
+        }
+        Returns: boolean
+      }
       complete_deck_media_job: {
         Args: {
           p_job_id: string
@@ -1361,6 +1892,42 @@ export type Database = {
           p_worker_id: string
         }
         Returns: boolean
+      }
+      complete_lesson_video_preparation: {
+        Args: {
+          p_learning_objective: string
+          p_narration_text: string
+          p_project_id: string
+          p_scenes: Json
+          p_title: string
+        }
+        Returns: {
+          class_level: number
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          final_video_url: string | null
+          id: string
+          language_code: string
+          language_name: string
+          learning_objective: string
+          narration_duration_seconds: number | null
+          narration_text: string
+          narration_url: string | null
+          owner_id: string
+          status: string
+          subject: string
+          target_duration_seconds: number
+          title: string
+          topic: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "lesson_video_projects"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       complete_media_job: {
         Args: {
@@ -1405,22 +1972,6 @@ export type Database = {
           topic: string
           updated_at: string
         }[]
-        SetofOptions: {
-          from: "*"
-          to: "lesson_video_projects"
-          isOneToOne: false
-          isSetofReturn: true
-        }
-      }
-      complete_lesson_video_preparation: {
-        Args: {
-          p_project_id: string
-          p_title: string
-          p_learning_objective: string
-          p_narration_text: string
-          p_scenes: Json
-        }
-        Returns: Database["public"]["Tables"]["lesson_video_projects"]["Row"][]
         SetofOptions: {
           from: "*"
           to: "lesson_video_projects"
@@ -1489,6 +2040,17 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      fail_cloud_lesson_job: {
+        Args: {
+          p_cost_usd?: number
+          p_error_code: string
+          p_error_message: string
+          p_job_id: string
+          p_retry_delay_seconds?: number
+          p_worker_id: string
+        }
+        Returns: boolean
+      }
       fail_deck_media_job: {
         Args: {
           p_error_code: string
@@ -1522,6 +2084,15 @@ export type Database = {
           p_worker_id: string
         }
         Returns: boolean
+      }
+      heartbeat_cloud_lesson_job: {
+        Args: {
+          p_job_id: string
+          p_progress: number
+          p_provider_request_id?: string
+          p_worker_id: string
+        }
+        Returns: string
       }
       heartbeat_deck_media_job: {
         Args: { p_job_id: string; p_progress: number; p_worker_id: string }
@@ -1641,16 +2212,78 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      reserve_cloud_lesson: {
+        Args: {
+          p_class_level: number
+          p_language_code: string
+          p_subject: string
+          p_target_duration_seconds?: number
+          p_topic: string
+          p_visual_style?: string
+        }
+        Returns: {
+          cache_key: string | null
+          class_level: number
+          completed_at: string | null
+          content_key: string | null
+          cost_breakdown: Json
+          cost_usd: number
+          created_at: string
+          error_message: string | null
+          final_video_url: string | null
+          id: string
+          language_code: string
+          learning_objective: string | null
+          narration_duration_seconds: number | null
+          narration_text: string | null
+          narration_url: string | null
+          owner_id: string
+          reused_from_project_id: string | null
+          status: string
+          subject: string
+          target_duration_seconds: number
+          title: string | null
+          topic: string
+          updated_at: string
+          visual_style: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "cloud_lesson_projects"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       reserve_lesson_video_project: {
         Args: {
           p_class_level: number
-          p_subject: string
-          p_topic: string
           p_language_code: string
           p_language_name: string
+          p_subject: string
           p_target_duration_seconds: number
+          p_topic: string
         }
-        Returns: Database["public"]["Tables"]["lesson_video_projects"]["Row"][]
+        Returns: {
+          class_level: number
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          final_video_url: string | null
+          id: string
+          language_code: string
+          language_name: string
+          learning_objective: string
+          narration_duration_seconds: number | null
+          narration_text: string
+          narration_url: string | null
+          owner_id: string
+          status: string
+          subject: string
+          target_duration_seconds: number
+          title: string
+          topic: string
+          updated_at: string
+        }[]
         SetofOptions: {
           from: "*"
           to: "lesson_video_projects"

@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
+import { DeviceNotice } from "@/components/app-shell/device-notice";
 import { THEME_COOKIE, resolveTheme } from "@/lib/theme";
 
 const geistSans = Geist({
@@ -45,7 +46,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full">
         {/* ClerkProvider must sit inside <body>, not around <html>. */}
         <ClerkProvider appearance={theme === "dark" ? { theme: dark } : undefined}>
-          {children}
+          {/* Phones see DeviceNotice instead of the app; see .device-gate-* in globals.css. */}
+          <div className="device-gate-app">{children}</div>
+          <DeviceNotice />
         </ClerkProvider>
       </body>
     </html>

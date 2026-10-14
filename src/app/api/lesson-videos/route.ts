@@ -18,7 +18,7 @@ import {
   translateLessonPlan,
 } from '@/lib/videos/planner';
 
-export const maxDuration = 900;
+export const maxDuration = 300;
 
 /**
  * The local planner is probabilistic: a plan that fails validation after its

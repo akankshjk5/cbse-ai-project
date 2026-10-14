@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Clapperboard, Presentation, PanelLeftClose } from 'lucide-react';
+import { Clapperboard, Film, Presentation, PanelLeftClose } from 'lucide-react';
 
 /**
  * The single sidebar: brand, sections, account.
@@ -14,6 +14,7 @@ import { Clapperboard, Presentation, PanelLeftClose } from 'lucide-react';
 const NAV_ITEMS = [
   { href: '/app', label: 'Presentations', icon: Presentation },
   { href: '/app/videos', label: 'Videos', icon: Clapperboard },
+  { href: '/app/cloud-lessons', label: 'Lesson Video', icon: Film },
 ] as const;
 
 export function Sidebar({

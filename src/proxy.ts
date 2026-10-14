@@ -10,10 +10,8 @@ import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
  * `isProtectedRoute(['/', '/app(.*)'])` shape had waiting in it.
  *
  * Public, and deliberately short:
- *  - `/` — the landing page. It used to be protected, which meant a signed-out
- *    visitor's first impression of the product was a login form for something
- *    they had never heard of. `src/app/page.tsx` forwards a signed-IN visitor
- *    to /app, so nobody loses their decks to this change.
+ *  - `/` — no page of its own: `src/app/page.tsx` sends a signed-in visitor
+ *    to /app and everyone else to /sign-in.
  *  - `/sign-in`, `/sign-up` — Clerk's own screens.
  *  - `/api/webhooks(.*)` — Clerk calls these with no session and its own
  *    signature. `auth.protect()` here would answer 401 to Clerk itself; the

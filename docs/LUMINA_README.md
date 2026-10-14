@@ -226,9 +226,9 @@ clerk webhooks listen --token "$(clerk webhooks token)" \
 npm run dev
 ```
 
-Open <http://localhost:3000>. You should land on the **landing page** — it is
-the only public route besides sign-in, sign-up and the webhook. Sign up, and
-Clerk drops you at `/app`, your (empty) deck list.
+Open <http://localhost:3000>. You are sent straight to the **sign-in** page
+(there is no landing page). Choose sign up, and Clerk drops you at `/app`,
+your (empty) deck list. A signed-in visitor to `/` goes straight to `/app`.
 
 Before you trust anything, run the checks:
 
@@ -331,6 +331,54 @@ what is missing is a worker. See the generation-flow section of
 
 ---
 
+## Cloud lesson preparation worker (Step 4)
+
+This worker prepares the separate `cloud_lesson_*` engine. It calls Gemini for
+the English lesson, factual review, visual directions, Hindi/Kannada translation,
+and scene-aligned narration. It uses no RunPod service and generates no images
+or video itself. Successful preparation queues the image jobs for the next stage.
+
+Prerequisites: dependencies installed, the cloud lesson migration applied, and
+server-side `.env` configuration:
+
+- `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for the worker.
+- `CLOUD_LESSON_GEMINI_BACKEND=aistudio` with `GEMINI_API_KEY`, or
+  `CLOUD_LESSON_GEMINI_BACKEND=vertex` with `GOOGLE_VERTEX_API_KEY`.
+- Optional `CLOUD_LESSON_TTS_MODEL`, `CLOUD_LESSON_TTS_VOICE`,
+  `CLOUD_LESSON_GEMINI_CONCURRENCY`, and per-skill model overrides from
+  `.env.example`. Verify model access and billing on the chosen Google project.
+
+From the repository root:
+
+```powershell
+npm run test:cloud-prepare
+npm run worker:cloud-prepare
+# Process at most one queued preparation job and exit:
+npm run worker:cloud-prepare -- --once
+```
+
+The worker validates all cloud skill files before claiming jobs. Heartbeats run
+every 15 seconds; cancellation or lost ownership stops further provider calls and
+completion writes. Ctrl+C leaves unfinished work for database lease recovery.
+Each narration upload has a unique filename beneath the project id, so an expired
+worker cannot overwrite another worker's audio. The completion RPC atomically
+saves the eight scenes and releases scene 1's image job.
+
+For a **live, billable** preparation smoke test (local output only, no database
+jobs or Higgsfield requests):
+
+```powershell
+npm run smoke:cloud-prepare -- --confirm-spend --class 6 --subject Science --topic "Water cycle" --language en-IN
+```
+
+Use `hi-IN` or `kn-IN` to check translation and pronunciation. Output goes into
+`generated/cloud-prepare/<run>/lesson.json` and `narration.wav`. Without
+`--confirm-spend`, the smoke prints instructions and makes no API calls. Listen
+to each scene and review the facts before displaying the lesson to students.
+Job metadata records the reference, warnings, per-scene speech timing, and known
+Gemini cost with an unpriced-call count. Retry attempts can repeat paid planning
+or speech calls; the current worker does not cache preparation between attempts.
+
 ## Where to read next
 
 - **[CLAUDE.md](CLAUDE.md)** — the architecture, and the rules that are
@@ -338,3 +386,297 @@ what is missing is a worker. See the generation-flow section of
 - `Agents/` — the pipeline. `Agents/Skills/*.md` are the specialists themselves:
   a prompt and a `model:` line each.
 - `supabase/migrations/` — the schema, and the only place it is defined.
+
+
+### Cloud lesson Step 5: scene images
+
+Run the image worker alongside the preparation worker (CPU only):
+
+```bash
+npm run worker:cloud-image
+# Process at most one queued image, then exit:
+npm run worker:cloud-image -- --once
+# Offline lifecycle and image validation checks:
+npm run test:cloud-image
+```
+
+This worker uses the same Gemini backend/key and Supabase service-role setup as
+Step 4. `CLOUD_LESSON_IMAGE_MODEL` defaults to `gemini-nano-banana-2.1`.
+It requests 2K, 16:9 images, decodes and strips metadata with Sharp, and saves
+2560x1440 PNGs. Undersized responses fail rather than being upscaled.
+Scene 1 runs first; the completion RPC releases scenes 2–8 with its image as
+their photographic style reference. Reference downloads are limited to this
+Supabase project's public cloud-lesson-assets bucket and the current lesson's
+media directory; redirects and oversized downloads are refused.
+
+Each claim generates one image and runs the keyframe-checker skill. Rejected
+images retry through the existing queue (three attempts, two-second delay).
+Unsafe images or images containing writing are never accepted. On the final
+attempt, a safe image without writing may be accepted with a warning if the
+checker reports subject/style mismatch. All Gemini calls are metered. Heartbeats
+continue during generation; cancellation or lost ownership prevents further
+calls and completion. Unique non-overwriting upload paths protect replacement
+workers. Uploads interrupted before completion can leave unused storage objects.
+
+Successful image completion queues Step 6 video jobs automatically. Step 5 does
+not call Higgsfield; animation and final video assembly require Step 6.
+Running this worker makes billable Gemini calls; the tests use fake responses
+and do not spend money or write to Supabase. Live image quality has not yet been
+verified. Retried preparation/image jobs may repeat provider work; they do not
+have provider-side idempotency or resume checkpoints.
+
+
+### Cloud lesson Step 6: animation and final video
+
+The separate `worker:cloud-media` process claims only cloud `video` and
+`assemble` jobs. Existing RunPod workers, queues and compositor files are
+unchanged. Up to six scenes get five-second native 1080p Kling 2.5 Turbo Pro
+clips through Higgsfield; still scenes use CPU pan/zoom. Each scene is composed
+at 1920x1080, 24 fps, for exactly 7.5 seconds, with captions and deterministic
+teaching overlays. Animated scenes hold the final frame for the remainder of
+the slot. Eight clips are joined with cuts at the narration boundaries; the
+prepared narration is mixed into a 60-second H.264/AAC MP4. Raw provider clips
+are uploaded separately and their URLs retained in video-job metadata.
+
+On a CPU Ubuntu host, install Node plus Python, FFmpeg and Pillow with libraqm:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y python3 python3-venv ffmpeg libraqm0 fonts-dejavu-core
+python3 -m venv .venv-cloud
+.venv-cloud/bin/pip install -r ops/cloud/requirements.txt
+```
+
+Set `CLOUD_LESSON_PYTHON` to the absolute `.venv-cloud/bin/python` path. Put the
+following open-source font files into `ops/cloud/fonts` (or set
+`CLOUD_LESSON_FONTS_DIR`): `Kalam-Bold.ttf`, `NotoSansDevanagari.ttf`,
+`NotoSansKannada.ttf`, and `DejaVuSans-Bold.ttf`. Kalam is available from
+[Google Fonts](https://github.com/google/fonts/tree/main/ofl/kalam); the Noto
+files are available from [Noto Devanagari](https://github.com/notofonts/devanagari)
+and [Noto Kannada](https://github.com/notofonts/kannada). Copy the system's
+DejaVu bold font into that directory. Font files are deployment assets, not
+bundled in this repository. Hindi/Kannada require Pillow's RAQM shaping support;
+preflight refuses to claim jobs without it or without any required fonts.
+
+On Windows, use `.venv-cloud\Scripts\python.exe` for `CLOUD_LESSON_PYTHON`,
+install `ops/cloud/requirements.txt`, and configure the absolute FFmpeg/FFprobe
+paths in `.env`. Pillow's Windows wheel also requires a separate FriBiDi DLL.
+For 64-bit Python, download the
+[MSYS2 FriBiDi 1.0.17 package](https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-fribidi-1.0.17-1-any.pkg.tar.zst),
+verify SHA256 `707f6a2f9a49c83938271bfd92a11f80bd4c18c4837210173fcb39e9d841e5ac`,
+and extract `mingw64/bin/libfribidi-0.dll` into `.venv-cloud/Scripts`.
+Keep the package's `mingw64/share/licenses/fribidi/COPYING` when distributing
+the DLL. The compositor loads this virtual-environment-local DLL before Pillow
+initializes, enabling RAQM without modifying Windows system directories or PATH.
+All four font files above are still required. Run `worker:cloud-media -- --preflight`
+to verify the complete configuration before starting a worker.
+
+Set `HF_CREDENTIALS=KEY_ID:KEY_SECRET` in `.env`. Alternatives are `HF_KEY` or
+`HF_API_KEY_ID` plus `HF_API_KEY_SECRET`. The existing `HIGGSFIELD` variable is
+also accepted when it contains `KEY_ID:KEY_SECRET`. Use API credentials from the Higgsfield
+console, not the website subscription. Service-role Supabase configuration is
+the same as Steps 4/5. Do not expose these credentials to the browser.
+
+```bash
+npm run worker:cloud-media -- --preflight  # Local dependencies only; no paid calls
+npm run test:cloud-media                 # Offline lifecycle/provider tests
+npm run worker:cloud-media               # Claim cloud video and assembly jobs
+npm run worker:cloud-media -- --once     # At most one job
+npm run worker:cloud-media -- --assemble-only # Does not require Higgsfield credentials
+```
+
+Provider submissions use the fixed model
+`kling-video/v2.5-turbo/pro/image-to-video`, five seconds and cfg_scale 0.5.
+The job UUID supplies a stable `Idempotency-Key`, so ambiguous submissions and
+lease recovery replay the same generation intent. The provider request UUID
+is saved through the heartbeat RPC before polling, and existing IDs are resumed.
+Documented terminal failures are retained rather than silently submitting a
+new paid generation. Transient requests have bounded retries/backoff and polling
+has a twenty-minute deadline per claim. The account's real API availability
+and charges still need verification with a paid sample.
+
+Cancellation prevents further downloads, rendering and completion. A queued
+Higgsfield request is cancelled on a best-effort basis; Higgsfield cannot cancel
+requests that have already started. Those may still incur a charge. Lease loss
+never cancels the shared provider request or writes to the replacement job.
+Provider costs stored in the queue are **estimates**, using
+`CLOUD_LESSON_HIGGSFIELD_USD_PER_SECOND` (default 0.035, promotional price checked
+2026-10-10), and are labelled accordingly in metadata. Invoices are authoritative;
+unobserved completion after cancellation/crash may not be reflected in the total.
+
+Downloads are bounded and restricted to the current lesson's Supabase assets
+or allowlisted provider CDN domains, with redirects refused. If Higgsfield
+returns another CDN, add its exact verified domain to
+`CLOUD_LESSON_PROVIDER_MEDIA_HOSTS`; the default is
+`higgsfield.ai,higgs.ai,cloudfront.net`. Uploads use unique non-overwriting names.
+Incomplete uploads can leave orphan objects; successful raw clips are retained
+for later visual reuse. This worker requires a persistent CPU process, rather
+than a short-lived web request. Windows users need FFmpeg/FFprobe and a Python
+build with RAQM; Ubuntu is the recommended deployment environment.
+
+
+### Cloud lesson Step 7: Lesson Video page, cache and language reuse
+
+Open `/app/cloud-lessons` or choose **Lesson Video** in the sidebar. Select
+class, subject, English/Hindi/Kannada and a topic. Lessons are always eight
+7.5-second scenes, with narration and a final 1080p video. The separate page
+shows stage counts, progress, recorded costs, cancellation and playback.
+The existing Videos page and RunPod queue remain unchanged.
+
+Apply `20261011090000_cloud_lesson_reuse.sql` and regenerate database types
+when setting up another database. The migration retains the original reservation
+and completion checks as private helpers. The public reservation RPC atomically
+returns exact completed or active matches before creating new work, using the
+existing owner lock and generation limits. Caches only use the signed-in owner's
+lessons. Cancellation does not refund already incurred provider charges.
+
+Exact completed matches can be opened with no new generation charge. For a
+matching lesson in another language, the worker reuses the audited English
+source plan, eight keyframes and stored raw animations. It only regenerates
+translation, speech, captions and CPU composition. Sources need the canonical
+`sourcePlan` metadata introduced in Step 7; older lessons without it generate
+fresh visuals. Original source URLs remain referenced; do not delete source
+assets while language variants depend on them.
+
+Start the app and each worker in its own terminal from the project directory:
+
+```powershell
+npm run dev
+npm run worker:cloud-prepare
+npm run worker:cloud-image
+npm run worker:cloud-media
+```
+
+Restart already-running workers after updating code. The page queues work;
+it does not start workers. Preparation needs Gemini credentials, the image
+worker needs an image-capable Gemini model, and the media worker needs the
+Windows/Ubuntu dependencies documented above plus Higgsfield credentials.
+No RunPod services are required for this page. Run preflight before starting
+media work. The first genuinely new submission triggers paid provider calls.
+
+APIs: `GET/POST /api/cloud-lessons`, `GET/DELETE /api/cloud-lessons/[id]`,
+and `GET /api/cloud-lessons/cache?classLevel=6&subject=Science&topic=Water+cycle&languageCode=en-IN`.
+Each uses Clerk authentication and owner-scoped Supabase reads/RPCs; provider
+keys, request IDs and worker identities are never returned to the browser.
+Progress refreshes every five seconds and survives reloads through the stored
+queue and selected lesson URL. Animation allowances and recorded animation costs
+are estimates; invoices are authoritative, and Gemini costs are additional.
+
+Validation: `npm run test:cloud-ui`, all other `test:cloud-*` scripts,
+`npm run typecheck`, `npm run lint`, and `npm run build`. For rollback-only
+Postgres ownership/cache/reuse tests, run `supabase db query --linked --file
+scripts/test-cloud-cache.sql`. Its fixtures remain uncommitted and invisible
+to workers, then are rolled back, so it cannot trigger generation.
+
+
+### Cloud lesson duration and presentation
+
+Lesson Video now offers 30 seconds (four scenes) or 60 seconds (eight scenes).
+Every scene retains its 7.5-second narration slot. Scripts are written for the
+selected length; a short lesson explains one focused idea and ends with a recap.
+
+The default **2D illustrated explainer** uses bold outlines, a shared teal/coral/
+amber palette, a clean pale-blue frame, timed caption reveals, animated teaching
+overlays, gentle camera motion and short fades. Higgsfield animates at most two
+scenes for 30 seconds or three for 60 seconds. **Editorial photographs** preserves
+the original warm-paper look and permits up to four/six provider animations.
+Static illustrations use camera motion and overlays; the compositor does not
+independently animate arbitrary objects inside a generated image.
+
+Apply `20261011120000_cloud_lesson_duration_style.sql` after the cloud reuse
+migration, then regenerate database types. Existing projects keep the editorial
+style. Cache lookup and visual reuse are scoped to the same owner, duration and
+style; only language may differ for visual reuse. Restart the web app and all
+three cloud workers after upgrading so existing processes reload the new code
+and prompts. No new provider keys or GPU dependencies are needed.
+
+Offline checks: `npm run test:cloud-prepare`, `npm run test:cloud-media`, and
+`npm run test:cloud-ui`. Database checks in `scripts/test-cloud-duration.sql`
+use fixtures inside a rolled-back transaction, so workers cannot claim them.
+`ops/cloud/test_compositor.py` with the FFmpeg, FFprobe and fonts arguments also
+renders synthetic 30- and 60-second 1080p videos with audio, without model calls.
+
+
+### Cloud lesson Storybook style
+
+**Storybook** is a third Lesson Video style, built for history and story topics:
+black-and-white pen-and-ink engravings on sepia paper, two pictures a scene with
+slow camera moves and dissolves between them, a ribbon chapter title on every
+scene, a storyteller voice and an optional quiet music bed. It is part of the
+cloud engine only. The illustrated and editorial styles, the RunPod lesson
+engine and the deck generator are unchanged; Storybook has its own skill files,
+compositor module (`ops/cloud/storybook.py`) and shot table.
+
+How a Storybook lesson is made:
+
+1. **Plan.** The writer and auditor run as for every style; then
+   `cloud-lesson-storybook-director` gives each scene a 2–4 word chapter title
+   and exactly two shots (a shot size, a camera move and a picture). Chapter
+   titles are translated with the captions. At most one scene of a 30-second
+   lesson (two of 60 seconds) is animated.
+2. **Pictures.** The image worker draws shot 1 of scene 1 first. Every other
+   shot is then drawn with that picture as its style reference, so the lesson
+   looks like one engraver drew it. `cloud-lesson-storybook-checker` refuses
+   pictures with lettering or unsafe content and asks for a redraw of a wrong
+   or off-style one. Pictures are 2K; 1K loses the fine hatching.
+3. **Scenes.** The media worker sends shot 1 of an animated scene to Higgsfield,
+   then composes each scene from both shots: 8 seconds (a 7.5-second slot plus a
+   half-second tail for the dissolve), sepia grade, paper texture, banner and
+   caption.
+4. **Final video.** Scenes are joined with half-second dissolves on the
+   narration boundaries and trimmed to exactly 30 or 60 seconds, with the
+   narration and, when configured, one music track ducked under it.
+
+**Setup.** Apply `20261011150000_cloud_lesson_storybook.sql` and
+`20261011170000_cloud_lesson_storybook_cheaper.sql` after the earlier cloud
+migrations (`npx supabase db push --dry-run` lists what is pending, then
+`npm run db:push`), run `npm run db:types`, and restart the web app and all
+three cloud workers so they load the new skills. No new keys are needed.
+
+- **Fonts:** the same four files as Step 6. Hindi and Kannada titles use the
+  Noto fonts. For English titles you may add a display face of your choice as
+  `ops/cloud/fonts/StorybookTitle.ttf` (an OFL serif such as IM Fell or Cinzel
+  suits the look); without it the banner uses Kalam.
+- **Music (optional):** set `CLOUD_LESSON_MUSIC_DIR` to a folder of `.wav` or
+  `.m4a` tracks **you have the rights to use**. Each lesson gets one track,
+  picked from the lesson id (a retry gets the same one), faded in and out and
+  ducked under the voice. Unset, or an empty folder, means narration only.
+  `npm run worker:cloud-media -- --preflight` refuses a setting that is not a
+  folder. Only Storybook lessons get music.
+
+**Cost and time.** Measured with live calls in October 2026: plan about
+$0.035, voice $0.006 per 30 seconds, each 2K picture with its check about
+$0.061. A 30-second lesson draws 8 pictures and animates 1 scene, about $0.70;
+60 seconds draws 16 and animates 2, about $1.40. The animation part comes from
+`CLOUD_LESSON_HIGGSFIELD_USD_PER_SECOND`, so set it to your account's real
+Kling 2.5 Turbo Pro rate; redraws and retries add to the total. The form shows
+this estimate before a teacher starts. On a CPU host, scene composition takes
+about 16–24 seconds a scene and assembly about a minute; with picture and
+animation queues, a 30-second lesson is usually ready in 6–10 minutes.
+
+**Checks.**
+
+```bash
+npm run test:cloud-storybook        # director, checker, preparation and image paths; offline
+npm run test:cloud-media            # includes storybook scenes, reuse and music; offline
+npm run test:cloud-ui               # style option, picture progress, estimates, report; offline
+.venv-cloud/bin/python ops/cloud/test_storybook.py \
+  --ffmpeg ffmpeg --ffprobe ffprobe --fonts ops/cloud/fonts   # real 30-second encode, no APIs
+supabase db query --linked --file scripts/test-cloud-storybook.sql   # rolled back, cannot trigger work
+npm run smoke:cloud-storybook -- --confirm-spend   # LIVE: one plan, voice, 3 pictures, about $0.25
+```
+
+**First live lesson.** With the migrations applied and the three workers
+running, open `/app/cloud-lessons`, choose Storybook, 30 seconds, and a story
+topic (for example Class 7 History, "Shivaji Maharaj's escape from Agra").
+When it finishes, read its real cost and time from the queue:
+
+```bash
+npm run report:cloud-lesson -- --latest --style storybook
+npm run report:cloud-lesson -- <lesson-id>
+```
+
+The report is read-only. It lists each stage's jobs, retries, recorded cost
+and time, the total against the form's estimate, and how many scenes Higgsfield
+animated. The Higgsfield figure is an estimate until it is compared with the
+API invoice; update `CLOUD_LESSON_HIGGSFIELD_USD_PER_SECOND` if they differ.

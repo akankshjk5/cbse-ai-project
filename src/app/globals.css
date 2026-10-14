@@ -33,6 +33,26 @@ body {
 }
 
 /*
+ * Phone-sized screens are not supported: they get DeviceNotice instead of the
+ * app (src/components/app-shell/device-notice.tsx). "Phone-sized" is narrower
+ * than 768px, or a touch screen shorter than 500px (a phone turned sideways).
+ * Tablets and anything wider see the app as usual.
+ */
+.device-gate-notice {
+  display: none;
+}
+
+@media (max-width: 767px), (pointer: coarse) and (max-height: 499px) {
+  .device-gate-app {
+    display: none !important;
+  }
+
+  .device-gate-notice {
+    display: flex;
+  }
+}
+
+/*
  * Slide element motion.
  *
  * The numbers all arrive as custom properties `SlideCanvas` computes from the

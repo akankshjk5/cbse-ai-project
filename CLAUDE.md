@@ -64,7 +64,7 @@ src/
   proxy.ts                 Next 16 "proxy" (formerly middleware) — clerkMiddleware
   app/
     layout.tsx             ClerkProvider (inside <body>) + auth controls
-    page.tsx               the PUBLIC landing page; signed-in visitors go to /app
+    page.tsx               redirect only: signed-in → /app, signed-out → /sign-in
     sign-in/[[...sign-in]]  Clerk <SignIn />
     sign-up/[[...sign-up]]  Clerk <SignUp />
     api/webhooks/clerk     account lifecycle: provision on created, purge on deleted
@@ -123,14 +123,12 @@ cookies through middleware. That guide does not apply here. Import from
   a future shared-deck viewer (`/d/<id>`) belongs there too, or link-shared
   decks will demand a login and the `visibility in ('public', 'unlisted')` RLS
   policies stay unreachable.
-- **`/` is the landing page and it is public.** It was a protected gate, which
-  meant a signed-out visitor's first impression of the product was a login form
-  for something they had never heard of — the highest-drop-off screen it is
-  possible to ship. `src/app/page.tsx` renders marketing for a signed-out
-  visitor and redirects a signed-in one to `/app`, so nobody loses their decks
-  to the change. Its claims are read from code (`estimateDeckCost`,
-  `TEMPLATE_IDS`, `DEFAULT_WORD_BUDGET`) rather than hardcoded, because the way
-  a landing page starts lying is by hardcoding what the product already knows.
+- **`/` has no landing page, on purpose.** The product is delivered to
+  invited schools, so a visitor goes straight to sign-in: `src/app/page.tsx`
+  redirects a signed-in visitor to `/app` and everyone else to `/sign-in`
+  (which links to sign-up). `/` stays in the public list so that redirect, not
+  `auth.protect()`, decides where a visitor lands. Do not re-add a marketing
+  page here without being asked.
 - **Clerk's webhook is how an account ends.** `/api/webhooks/clerk` handles
   `user.created` (provision the profile) and `user.deleted` (`purgeAccount` —
   storage objects first, then decks, documents, imports and the profile row).
