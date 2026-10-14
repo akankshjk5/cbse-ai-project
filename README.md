@@ -33,7 +33,7 @@ The lesson pipeline self-hosts its entire model stack on one 48 GB GPU:
 | Video | Wan 2.2 TI2V-5B FP16, image-to-video |
 | Narration | Indic Parler-TTS, nine Indian languages, with a Whisper listen-back check |
 | Lesson planning | Qwen3-4B |
-| Visual QC | Qwen2.5-VL-3B |
+| Visual QC | Qwen2.5-VL-7B (Apache-2.0; the 3B is research-only) |
 | Translation | IndicTrans2 en-indic 1B |
 
 Jobs run through a Postgres `SKIP LOCKED` queue with heartbeat recovery, bounded

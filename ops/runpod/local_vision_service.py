@@ -22,7 +22,11 @@ import torch
 from PIL import Image
 from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
 
-MODEL_PATH = os.environ.get("LOCAL_VISION_MODEL_PATH", "/workspace/lumina-local-ai/qwen2.5-vl-3b")
+# Qwen2.5-VL-7B-Instruct, not 3B: the 3B weights ship under Qwen's research
+# licence, which does not cover a commercial schools product. The 7B is
+# Apache-2.0. It costs roughly 9 GB more resident VRAM, which is why the
+# services node is sized at 32 GB rather than 24 (ops/runpod/README.md).
+MODEL_PATH = os.environ.get("LOCAL_VISION_MODEL_PATH", "/workspace/lumina-local-ai/qwen2.5-vl-7b")
 PORT = int(os.environ.get("LOCAL_VISION_PORT", "18083"))
 MAX_REQUEST_BYTES = 25_000_000
 MODEL_LOCK = threading.Lock()

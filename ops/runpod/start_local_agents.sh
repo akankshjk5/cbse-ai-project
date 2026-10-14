@@ -82,8 +82,8 @@ fi
 
 if [[ "${PROFILE}" == "vision" || "${PROFILE}" == "all" ]]; then
   # Keyframe checker. Optional: the media worker skips the check when it is down.
-  if [[ -s "${MODEL_ROOT}/qwen2.5-vl-3b/.lumina-complete" ]]; then
-    start_service       "Local vision" "/root/lumina-local-vision.pid" "/root/lumina-local-vision.log"       "http://127.0.0.1:18083/health"       LOCAL_VISION_MODEL_PATH="${MODEL_ROOT}/qwen2.5-vl-3b"       "${COMFY_PYTHON}" "${SCRIPT_DIR}/local_vision_service.py"
+  if [[ -s "${MODEL_ROOT}/qwen2.5-vl-7b/.lumina-complete" ]]; then
+    start_service       "Local vision" "/root/lumina-local-vision.pid" "/root/lumina-local-vision.log"       "http://127.0.0.1:18083/health"       LOCAL_VISION_MODEL_PATH="${MODEL_ROOT}/qwen2.5-vl-7b"       "${COMFY_PYTHON}" "${SCRIPT_DIR}/local_vision_service.py"
   else
     echo "Local vision model is not provisioned; keyframe vision checks will be skipped." >&2
   fi

@@ -36,9 +36,9 @@ log "provision local agents (reuses persisted models; installs Python environmen
 bash "${SCRIPT_DIR}/provision_local_agents.sh" all
 
 log "keyframe vision checker model"
-VISION_DIR=/workspace/lumina-local-ai/qwen2.5-vl-3b
+VISION_DIR=/workspace/lumina-local-ai/qwen2.5-vl-7b
 if [[ ! -s "${VISION_DIR}/.lumina-complete" ]]; then
-  HF_HOME=/workspace/.cache/huggingface "${RUNPOD_WORKSPACE_ROOT}/ComfyUI/.venv/bin/hf" download     Qwen/Qwen2.5-VL-3B-Instruct --local-dir "${VISION_DIR}"     && date -u +%Y-%m-%dT%H:%M:%SZ > "${VISION_DIR}/.lumina-complete"     || echo "WARNING: vision model download failed; keyframe vision checks will be skipped." >&2
+  HF_HOME=/workspace/.cache/huggingface "${RUNPOD_WORKSPACE_ROOT}/ComfyUI/.venv/bin/hf" download     Qwen/Qwen2.5-VL-7B-Instruct --local-dir "${VISION_DIR}"     && date -u +%Y-%m-%dT%H:%M:%SZ > "${VISION_DIR}/.lumina-complete"     || echo "WARNING: vision model download failed; keyframe vision checks will be skipped." >&2
 fi
 
 log "voice listen-back model"

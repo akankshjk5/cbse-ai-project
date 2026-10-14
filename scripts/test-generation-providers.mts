@@ -24,8 +24,17 @@ import {
   cloudEstimateUsd,
   crossoverLessonsPerDay,
   generatorIdFromEnv,
-  gpuEstimateUsd,
+  localEstimateUsd,
 } from '../src/lib/generation/providers/registry.ts';
+import {
+  GENERATION_STAGES,
+  animatedSceneCap,
+  assertExternalAllowed,
+  recoveryFor,
+  resolveAll,
+  resolveStage,
+  usesPaidProvider,
+} from '../src/lib/generation/providers/policy.ts';
 
 function check(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
@@ -70,14 +79,14 @@ const base: LessonRequest = {
 };
 
 check(unsupportedReason(CAPABILITIES.cloud, base) === null, 'cloud must accept the base request');
-check(unsupportedReason(CAPABILITIES.gpu, base) !== null,
-  'the GPU path ships only the editorial style, so it must refuse an illustrated request');
-check(unsupportedReason(CAPABILITIES.gpu, { ...base, visualStyle: 'editorial' }) === null,
-  'the GPU path must accept editorial');
+check(unsupportedReason(CAPABILITIES.local, base) !== null,
+  'the local path ships only the editorial style, so it must refuse an illustrated request');
+check(unsupportedReason(CAPABILITIES.local, { ...base, visualStyle: 'editorial' }) === null,
+  'the local path must accept editorial');
 check(unsupportedReason(CAPABILITIES.cloud, { ...base, durationSeconds: 30 }) === null,
   'cloud must accept 30 seconds');
-check(unsupportedReason(CAPABILITIES.gpu, { ...base, visualStyle: 'editorial', durationSeconds: 30 }) !== null,
-  'the GPU path ships 60 seconds only');
+check(unsupportedReason(CAPABILITIES.local, { ...base, visualStyle: 'editorial', durationSeconds: 30 }) !== null,
+  'the local path ships 60 seconds only');
 console.log('capabilities: refusals are declared, not discovered at call time');
 
 for (const id of GENERATOR_IDS) {
@@ -86,15 +95,15 @@ for (const id of GENERATOR_IDS) {
   check(capability.producesPptx === false,
     `${id} claims to make a .pptx; neither engine binds slides to scenes yet`);
 }
-check(CAPABILITIES.gpu.requiresGpu && !CAPABILITIES.cloud.requiresGpu,
+check(CAPABILITIES.local.requiresGpu && !CAPABILITIES.cloud.requiresGpu,
   'only the self-hosted path needs a GPU');
 console.log('capabilities: all three cover en/hi/kn; none claims PPTX, which is still unbuilt');
 
 // ── Cost ────────────────────────────────────────────────────────────────────
 
 const cloud60 = cloudEstimateUsd(base);
-const gpu60 = gpuEstimateUsd(base);
-check(cloud60 > gpu60, 'the cloud estimate should exceed the GPU estimate per lesson');
+const local60 = localEstimateUsd(base);
+check(cloud60 > local60, 'the cloud estimate should exceed the GPU estimate per lesson');
 check(cloud60 > 0.9 && cloud60 < 1.3,
   `illustrated 60 s should land near USD 1.06, got ${cloud60}`);
 check(CAPABILITIES.fixture.estimateUsd(base) === 0, 'the fixture provider must cost nothing');
@@ -103,7 +112,7 @@ const storybook = cloudEstimateUsd({ ...base, visualStyle: 'storybook' });
 const editorial = cloudEstimateUsd({ ...base, visualStyle: 'editorial' });
 check(storybook > cloud60, 'storybook draws two pictures a scene, so it costs more');
 check(editorial > storybook, 'editorial animates six scenes, the most of the three');
-console.log(`cost: illustrated $${cloud60.toFixed(3)} · storybook $${storybook.toFixed(3)} · editorial $${editorial.toFixed(3)} · gpu $${gpu60.toFixed(3)}`);
+console.log(`cost: illustrated $${cloud60.toFixed(3)} · storybook $${storybook.toFixed(3)} · editorial $${editorial.toFixed(3)} · local $${local60.toFixed(3)}`);
 
 // A 30-second lesson must cost less than a 60-second one in every style.
 for (const style of ['illustrated', 'editorial', 'storybook'] as const) {
@@ -120,12 +129,63 @@ console.log(`crossover: the GPU path pays for itself above ~${crossover} lessons
 
 // ── Selection ───────────────────────────────────────────────────────────────
 
-check(generatorIdFromEnv(undefined) === 'cloud', 'unset must default to cloud');
-check(generatorIdFromEnv('GPU') === 'gpu', 'selection is case-insensitive');
+check(generatorIdFromEnv(undefined) === 'local', 'unset must default to local, not a paid provider');
+check(generatorIdFromEnv('LOCAL') === 'local', 'selection is case-insensitive');
 check(generatorIdFromEnv(' fixture ') === 'fixture', 'selection trims');
 let refused = false;
 try { generatorIdFromEnv('runpod'); } catch { refused = true; }
 check(refused, 'an unknown generator must be refused, not silently defaulted');
-console.log('selection: defaults to cloud, refuses an unknown id rather than guessing');
+console.log('selection: defaults to local, refuses an unknown id rather than guessing');
+
+// ── Provider policy: paid APIs are opt-in and never a fallback ──────────────
+
+const off = resolveAll({});
+for (const stage of GENERATION_STAGES) {
+  check(off[stage].kind !== 'external',
+    `${stage} reaches a paid provider with no configuration at all`);
+}
+check(!usesPaidProvider({}), 'a default deployment must spend nothing at a third party');
+check(off.motion.kind === 'deterministic', 'motion must default to FFmpeg, not a generative model');
+console.log('policy: every stage defaults local; motion defaults deterministic');
+
+check(resolveStage('image', { externalStages: 'image' }).kind !== 'external',
+  'EXTERNAL_PROVIDERS alone must not enable a paid provider');
+check(!usesPaidProvider({ externalStages: 'plan,image,speech,motion' }),
+  'naming every stage without ALLOW_EXTERNAL_PROVIDERS must still spend nothing');
+console.log('policy: one switch is not enough, both are required');
+
+const on = { allowExternal: 'true', externalStages: 'image' };
+check(resolveStage('image', on).kind === 'external', 'both switches must enable the named stage');
+check(resolveStage('motion', on).kind !== 'external', 'an unnamed stage must stay local');
+console.log('policy: enabling one stage does not enable the others');
+
+for (const stage of GENERATION_STAGES) {
+  for (const attempt of [1, 2, 3]) {
+    const recovery = recoveryFor(stage, attempt, 3, {});
+    if (recovery.action === 'retry') {
+      check(recovery.provider.kind !== 'external',
+        `${stage} failure at attempt ${attempt} fell back to a paid provider`);
+    }
+  }
+  check(recoveryFor(stage, 3, 3, {}).action === 'stop',
+    `${stage} must stop at the attempt limit, not escalate`);
+}
+console.log('policy: failure retries the same provider or stops, never escalates to paid');
+
+let refusedExternal = false;
+try { assertExternalAllowed('motion', {}); } catch { refusedExternal = true; }
+check(refusedExternal, 'spending at a paid provider must fail closed when unconfigured');
+console.log('policy: the spend point fails closed, not just the config point');
+
+let badStage = false;
+try { resolveStage('image', { allowExternal: 'true', externalStages: 'imag' }); } catch { badStage = true; }
+check(badStage, 'a misspelled stage name must be refused rather than ignored');
+console.log('policy: a misspelled stage name is refused');
+
+for (const [style, expected] of [['storybook', 2], ['illustrated', 3], ['editorial', 6]] as const) {
+  check(animatedSceneCap(style, 60) === expected, `${style} cap should be ${expected}`);
+  check(animatedSceneCap(style, 60) < 8, `${style} must not animate every scene`);
+}
+console.log('policy: animation caps hold, most scenes never reach a video model');
 
 console.log('\nOK');

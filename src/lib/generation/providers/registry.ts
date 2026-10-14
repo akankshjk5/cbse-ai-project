@@ -1,18 +1,23 @@
 /**
  * Which generator serves a request, and what each one costs.
  *
- * The default is the cloud engine, and the reason is arithmetic rather than
- * taste. A 60-second lesson costs about USD 1.06 illustrated through Gemini and
- * Higgsfield, against about USD 0.043 on a self-hosted RTX 6000 Ada — but the
- * self-hosted figure only holds while the card is busy. One always-on pod is
- * roughly USD 562 a month, so the paths cross at **15 to 18 lessons a day**.
- * Below that the cloud engine is cheaper and needs no GPU operations at all;
- * above it the GPU path wins and keeps widening.
+ * The default is `local`: open models on GPU infrastructure we control. Paid
+ * third-party generation APIs are optional, off unless named, and never
+ * selected as a fallback — `policy.ts` holds that rule and the reasoning.
  *
- * So: start on cloud, measure, and switch by setting `LESSON_GENERATOR=gpu`
- * when the daily count passes the crossover. The switch is an environment
- * variable because that is the honest shape of the decision — it depends on
- * volume, which changes, not on code.
+ * The arithmetic supports it rather than driving it. A 60-second illustrated
+ * lesson costs about USD 1.06 through Gemini and Higgsfield against about USD
+ * 0.055 self-hosted, so the cloud path is roughly nineteen times dearer per
+ * lesson. What the cloud path buys is not cost, it is having no GPU to operate;
+ * that is a real thing to want, which is why `cloud` remains selectable.
+ *
+ * Utilisation is the figure that actually decides hardware, and it cuts against
+ * owning a card at low volume: at twenty lessons a day one always-on RTX 6000
+ * Ada sits at about 6% utilisation, USD 562 a month to do USD 33 of work. Pay
+ * per second below roughly 340 lessons a day and own the card above it — but
+ * cold start is measured at 472 s from the object volume against 16 s from
+ * hydrated NVMe, so "pay per second" means a burst node with a warm pool, not
+ * serverless from cold.
  *
  * `fixture` exists for load tests. It opens no job and spends nothing, which is
  * what makes a 300-user rehearsal affordable (the same idea as the retired
@@ -25,9 +30,9 @@ import {
   type LessonVisualStyle,
 } from './types';
 
-export type GeneratorId = 'cloud' | 'gpu' | 'fixture';
+export type GeneratorId = 'local' | 'cloud' | 'fixture';
 
-export const GENERATOR_IDS: readonly GeneratorId[] = ['cloud', 'gpu', 'fixture'];
+export const GENERATOR_IDS: readonly GeneratorId[] = ['local', 'cloud', 'fixture'];
 
 /**
  * Measured cloud rates, from `CLOUD_LESSON_STORYBOOK_COSTS` and the Higgsfield
@@ -77,7 +82,7 @@ const GPU_SECONDS = { image: 4.03, clip: 48.15, overheadPerLesson: 91 } as const
 /** One RTX 6000 Ada at an indicative USD 0.77 an hour. */
 const GPU_USD_PER_SECOND = 0.77 / 3600;
 
-export function gpuEstimateUsd(request: LessonRequest): number {
+export function localEstimateUsd(request: LessonRequest): number {
   const scenes = request.durationSeconds / 7.5;
   const seconds = GPU_SECONDS.overheadPerLesson
     + scenes * GPU_SECONDS.image
@@ -100,13 +105,13 @@ export const CLOUD_CAPABILITIES: GeneratorCapabilities = {
  * is capped at three by a column check. Narrower where it is narrower, wider
  * where it is wider; neither is pretending.
  */
-export const GPU_CAPABILITIES: GeneratorCapabilities = {
+export const LOCAL_CAPABILITIES: GeneratorCapabilities = {
   languages: ['en-IN', 'hi-IN', 'kn-IN'],
   visualStyles: ['editorial'],
   durationsSeconds: [60],
   producesPptx: false,
   requiresGpu: true,
-  estimateUsd: gpuEstimateUsd,
+  estimateUsd: localEstimateUsd,
 };
 
 export const FIXTURE_CAPABILITIES: GeneratorCapabilities = {
@@ -119,8 +124,8 @@ export const FIXTURE_CAPABILITIES: GeneratorCapabilities = {
 };
 
 export const CAPABILITIES: Record<GeneratorId, GeneratorCapabilities> = {
+  local: LOCAL_CAPABILITIES,
   cloud: CLOUD_CAPABILITIES,
-  gpu: GPU_CAPABILITIES,
   fixture: FIXTURE_CAPABILITIES,
 };
 
@@ -131,13 +136,14 @@ export function isGeneratorId(value: string): value is GeneratorId {
 /**
  * The configured generator.
  *
- * Unset means `cloud`: a fresh deployment should work with no GPU anywhere,
- * and an unreadable value is refused rather than silently defaulted — a typo
- * that quietly moves every lesson onto a different cost base is worse than a
- * failed boot.
+ * Unset means `local`: the primary strategy is self-hosted, and a deployment
+ * that has not said otherwise should not be spending at a third party. An
+ * unreadable value is refused rather than silently defaulted — a typo that
+ * quietly moves every lesson onto a paid cost base is worse than a failed
+ * boot.
  */
 export function generatorIdFromEnv(raw: string | undefined): GeneratorId {
-  const value = (raw ?? 'cloud').trim().toLowerCase();
+  const value = (raw ?? 'local').trim().toLowerCase();
   if (!isGeneratorId(value)) {
     throw new Error(
       `LESSON_GENERATOR must be one of ${GENERATOR_IDS.join(', ')}; got "${raw}".`,
@@ -149,7 +155,7 @@ export function generatorIdFromEnv(raw: string | undefined): GeneratorId {
 /**
  * Where the crossover sits, in lessons a day, for this request shape.
  *
- * Returns null when the GPU path cannot serve the request at all, because a
+ * Returns null when the local path cannot serve the request at all, because a
  * comparison against a provider that would refuse the job is not a comparison.
  * `monthlyGpuUsd` defaults to one always-on RTX 6000 Ada at an indicative rate.
  */
@@ -157,7 +163,7 @@ export function crossoverLessonsPerDay(
   request: LessonRequest,
   monthlyGpuUsd = 0.77 * 730,
 ): number | null {
-  const saving = cloudEstimateUsd(request) - gpuEstimateUsd(request);
+  const saving = cloudEstimateUsd(request) - localEstimateUsd(request);
   if (saving <= 0) return null;
   return Math.ceil(monthlyGpuUsd / saving / 30);
 }
