@@ -3,6 +3,7 @@ import 'server-only';
 import { ApiError, GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 
+import { type GenerationStage, guardExternalFactory } from '@/lib/generation/providers/policy';
 import { serverEnv } from '@/lib/env';
 
 import { type CostMeter, type GeminiUsage, priceGeminiUsage } from './pricing';
@@ -61,8 +62,14 @@ let defaultTransport: GeminiTransport | null = null;
  * The real transport: the Google Gen AI SDK on the configured backend. The key
  * is always passed explicitly, so the SDK never falls back to whatever
  * GOOGLE_API_KEY / GOOGLE_CLOUD_PROJECT happen to be in the environment.
+ *
+ * Guarded: Gemini is a paid provider, so the stage it serves must have been
+ * opted into. The stage is a parameter rather than inferred because one
+ * transport serves planning, images and speech, and enabling one of those must
+ * not enable the others.
  */
-export function geminiTransport(): GeminiTransport {
+export function geminiTransport(stage: GenerationStage): GeminiTransport {
+  guardExternalFactory(stage);
   if (!defaultTransport) {
     const vertexai = serverEnv.cloudLessonGeminiBackend === 'vertex';
     const client = new GoogleGenAI({ vertexai, apiKey: serverEnv.cloudLessonGeminiApiKey });
@@ -136,6 +143,13 @@ export interface CallOptions {
   meter?: CostMeter;
   /** Label for the cost record, e.g. the skill name or `tts`. */
   stage: string;
+  /**
+   * Which billable stage this call belongs to, for the paid-provider policy.
+   * Distinct from `stage` above, which is a free-text cost label. Required
+   * wherever a transport is not supplied, so no call can reach Gemini under a
+   * stage nobody opted into.
+   */
+  billingStage?: GenerationStage;
   /** Waits between transient retries; tests pass zeros. */
   retryDelaysMs?: number[];
   /**
@@ -169,7 +183,10 @@ const DEFAULT_RETRY_DELAYS_MS = [2_000, 6_000];
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function call(request: GeminiRequest, options: CallOptions): Promise<GeminiResponse> {
-  const transport = options.transport ?? geminiTransport();
+  // 'plan' is the conservative default: planning is the stage a deployment is
+  // least likely to have enabled, so a call that forgot to name itself is
+  // refused rather than billed under somebody else's permission.
+  const transport = options.transport ?? geminiTransport(options.billingStage ?? 'plan');
   const delays = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
   let lastError: unknown;
   for (let attempt = 0; attempt <= delays.length; attempt += 1) {
@@ -549,7 +566,8 @@ export function imagePart(mimeType: string, data: Buffer): GeminiPart {
 export async function generateStructuredWithImage<T>(
   options: StructuredOptions<T> & { image: { mimeType: string; data: Buffer } },
 ): Promise<StructuredResult<T>> {
-  const transport = options.transport ?? geminiTransport();
+  // The keyframe checker looks at a generated picture, so it bills as `image`.
+  const transport = options.transport ?? geminiTransport(options.billingStage ?? 'image');
   const withImage: GeminiTransport = {
     generateContent: (request) => {
       const [first, ...rest] = request.contents;

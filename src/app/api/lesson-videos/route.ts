@@ -9,6 +9,7 @@ import {
 } from '@/lib/videos/lesson-contracts';
 import { videoLanguage } from '@/lib/videos/languages';
 import { assertLocalVideoServicesReady } from '@/lib/videos/local-ai';
+import { admitGeneration } from '@/lib/generation/admission';
 import { synthesizeNarration } from '@/lib/videos/narration';
 import {
   adjustNarrationToFit,
@@ -156,6 +157,10 @@ export async function POST(request: Request) {
     }
     const sessionId = session.sessionId;
     const input = CreateLessonVideoSchema.parse(await request.json());
+    const admission = admitGeneration();
+    if (!admission.admitted) {
+      return NextResponse.json({ error: admission.reason }, { status: 503 });
+    }
     await assertLocalVideoServicesReady(session.userId);
     const supabase = createClientWithFreshSessionToken(sessionId);
     const { data: reserved, error: reserveError } = await supabase.rpc(

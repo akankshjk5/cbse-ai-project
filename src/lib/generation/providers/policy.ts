@@ -182,3 +182,28 @@ export function animatedSceneCap(style: string, durationSeconds: 30 | 60): numbe
   if (style === 'illustrated') return durationSeconds === 30 ? 2 : 3;
   return durationSeconds === 30 ? 4 : 6;
 }
+
+/**
+ * The policy as the running process sees it.
+ *
+ * Every enforcement point reads the environment through this, so a test can
+ * pass an explicit `PolicyEnv` and production cannot accidentally read a
+ * different pair of variables.
+ */
+export function policyEnv(): PolicyEnv {
+  return {
+    externalStages: process.env.EXTERNAL_PROVIDERS,
+    allowExternal: process.env.ALLOW_EXTERNAL_PROVIDERS,
+  };
+}
+
+/**
+ * Guard a paid provider at the point it is constructed.
+ *
+ * Called inside the factories rather than at each call site: a new caller
+ * cannot bypass a check it never has to remember, and there is exactly one
+ * place per provider where spending becomes possible.
+ */
+export function guardExternalFactory(stage: GenerationStage, env: PolicyEnv = policyEnv()): void {
+  assertExternalAllowed(stage, env);
+}

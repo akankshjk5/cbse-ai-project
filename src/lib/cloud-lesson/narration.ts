@@ -119,7 +119,7 @@ export async function voiceLesson(options: VoiceLessonOptions): Promise<SceneVoi
   const transport: GeminiTransport = {
     generateContent: (request) => {
       if (failed) return Promise.reject(new Error('Another scene narration failed; remaining calls were stopped.'));
-      return (options.transport ?? geminiTransport()).generateContent(request);
+      return (options.transport ?? geminiTransport('speech')).generateContent(request);
     },
   };
   const workers = Array.from({ length: Math.max(1, Math.min(8, options.concurrency ?? 4)) }, async () => {

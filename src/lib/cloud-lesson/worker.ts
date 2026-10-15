@@ -180,7 +180,7 @@ export async function runCloudPreparationJob(options: RunPreparationOptions): Pr
   const transport: GeminiTransport = {
     async generateContent(request) {
       await beat();
-      const response = await (options.transport ?? geminiTransport()).generateContent(request);
+      const response = await (options.transport ?? geminiTransport('plan')).generateContent(request);
       // Return the response so Gemini records its billed usage. The next
       // checkpoint/provider call rejects cancelled or lost work.
       return response;

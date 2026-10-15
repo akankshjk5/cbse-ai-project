@@ -5,6 +5,14 @@ import { join } from 'node:path';
 import { createHiggsfieldProvider, HIGGSFIELD_MODEL, HiggsfieldError, type HiggsfieldProvider } from '../src/lib/cloud-lesson/higgsfield.ts';
 import { assertStorybookShots, mediaAssetUrl, pickLessonMusic, runCloudMediaJob, type MediaJob, type MediaScene, type MediaShot, type CloudMediaStore, type CloudMediaRenderer } from '../src/lib/cloud-lesson/media-worker.ts';
 
+// This suite exercises the Higgsfield client's HTTP contract against a stub
+// fetcher, so it builds a provider without ever reaching the network. The
+// factory refuses to exist unless the motion stage was opted into, so the
+// suite opts in explicitly rather than being exempted from the policy — the
+// guard it has to satisfy is the same one production satisfies.
+process.env.ALLOW_EXTERNAL_PROVIDERS = 'true';
+process.env.EXTERNAL_PROVIDERS = 'motion';
+
 const id = '11111111-1111-4111-8111-111111111111';
 const project = '22222222-2222-4222-8222-222222222222';
 const providerId = '33333333-3333-4333-8333-333333333333';

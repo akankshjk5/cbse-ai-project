@@ -36,7 +36,8 @@
     "smoke:cloud-storybook": "tsx --env-file=.env --require ./scripts/allow-server-only.cjs scripts/smoke-cloud-storybook.mts",
     "report:cloud-lesson": "tsx --env-file=.env --require ./scripts/allow-server-only.cjs scripts/report-cloud-lesson.mts",
     "test:providers": "tsx --require ./scripts/allow-server-only.cjs scripts/test-generation-providers.mts",
-    "test:reuse": "tsx --require ./scripts/allow-server-only.cjs scripts/test-reuse-and-cost.mts"
+    "test:reuse": "tsx --require ./scripts/allow-server-only.cjs scripts/test-reuse-and-cost.mts",
+    "test:enforcement": "tsx --require ./scripts/allow-server-only.cjs scripts/test-provider-enforcement.mts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.8.2",

@@ -1,6 +1,8 @@
 import 'server-only';
 import { z } from 'zod';
 
+import { guardExternalFactory } from '@/lib/generation/providers/policy';
+
 export const HIGGSFIELD_MODEL = 'kling-video/v2.5-turbo/pro/image-to-video';
 const API = 'https://api.higgsfield.ai';
 export const HiggsfieldResultSchema = z.object({
@@ -19,8 +21,18 @@ export class HiggsfieldError extends Error {
   constructor(readonly status?: number) { super('Higgsfield request could not finish.'); }
 }
 
-/** Fixed origin and validated response URLs keep credentials away from arbitrary hosts. */
+/**
+ * Fixed origin and validated response URLs keep credentials away from arbitrary
+ * hosts.
+ *
+ * Refuses to exist unless the motion stage was explicitly opted into. This is
+ * the only place a Higgsfield client is built, so a worker, a retry or a future
+ * caller cannot reach the paid API without the two switches being set — and a
+ * local failure cannot quietly become a bill, because there is no code path
+ * that constructs this in response to one.
+ */
 export function createHiggsfieldProvider(credentials: string, fetcher: typeof fetch = fetch): HiggsfieldProvider {
+  guardExternalFactory('motion');
   const request = async (path: string, method: string, body?: unknown, key?: string) => {
     const response = await fetcher(`${API}${path}`, { method, redirect: 'error',
       signal: AbortSignal.timeout(60_000), headers: { Authorization: `Key ${credentials}`,
