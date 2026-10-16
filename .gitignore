@@ -74,3 +74,6 @@ legacy/video-agent/job_runs/
 legacy/video-agent/uploads/
 legacy/video-agent/script.json
 legacy/video-agent/memory.json
+
+# Derived catalogue data, rebuilt by npm run catalogue:ktbs
+/data
