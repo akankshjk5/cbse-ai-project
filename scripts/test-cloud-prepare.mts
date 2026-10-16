@@ -1,3 +1,7 @@
+// This suite injects provider doubles instead of calling a real API. Injection
+// is gated on LUMINA_TEST_SEAM so production cannot use the same door to
+// bypass the external-provider policy. See src/lib/generation/test-seam.ts.
+process.env.LUMINA_TEST_SEAM = '1';
 /** Offline preparation + queue lifecycle tests. All Gemini/Wikipedia/Storage calls are fake. */
 import assert from 'node:assert/strict';
 

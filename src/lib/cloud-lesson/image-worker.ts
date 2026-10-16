@@ -9,6 +9,7 @@ import { type CallOptions, generateImage, geminiTransport, type GeminiTransport 
 import { CostMeter } from './pricing';
 import { checkKeyframe, checkStorybookShot } from './vision';
 import { PreparationStopped, preparationFailure, type HeartbeatState } from './worker';
+import { deriveTrusted, resolveInjected } from '@/lib/generation/test-seam';
 
 export const ImageJobSchema = z.object({
   id: z.string().uuid(), project_id: z.string().uuid(), owner_id: z.string().min(1), scene_id: z.string().uuid(),
@@ -169,15 +170,20 @@ export async function runCloudImageJob(options: RunImageOptions): Promise<ImageR
     await beat();
     options.onStage?.(stage, progress);
   };
-  const transport: GeminiTransport = {
+  // Resolved once: either the registered test double or the guarded factory.
+  // The heartbeat wrapper derives its trust from that parent, so the chain
+  // always terminates at a root production cannot forge.
+  const parent = resolveInjected(options.transport, 'Gemini transport',
+    () => geminiTransport('image'));
+  const transport: GeminiTransport = deriveTrusted(parent, {
     async generateContent(request) {
       await beat();
-      const response = await (options.transport ?? geminiTransport('image')).generateContent(request);
+      const response = await parent.generateContent(request);
       // Return the response so Gemini records its billed usage. The next
       // checkpoint/provider call rejects cancelled or lost work.
       return response;
     },
-  };
+  }, 'Gemini transport');
   const timer = setInterval(() => { void beat().catch(() => undefined); }, options.heartbeatMs ?? 15_000);
   try {
     await checkpoint('claimed', 1);

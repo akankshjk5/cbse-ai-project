@@ -18,6 +18,13 @@ import { createHiggsfieldProvider } from '../src/lib/cloud-lesson/higgsfield.ts'
 import { geminiTransport } from '../src/lib/cloud-lesson/gemini.ts';
 import { admitGeneration } from '../src/lib/generation/admission.ts';
 import {
+  ProviderBypassRefused,
+  deriveTrusted,
+  markFactoryBuilt,
+  resolveInjected,
+  testDouble,
+} from '../src/lib/generation/test-seam.ts';
+import {
   ExternalProviderRefused,
   GENERATION_STAGES,
   type GenerationStage,
@@ -156,5 +163,69 @@ const broken = admitGeneration({}, 'runpod');
 check(!broken.admitted, 'an unknown LESSON_GENERATOR must be refused');
 check(broken.reason !== null, 'the refusal must explain itself');
 console.log('admission: an unknown generator is refused rather than defaulted');
+
+// ── Transport injection cannot bypass the policy ──────────────────────────
+// The hole this closes: every structured-call site accepts an injected
+// transport, and injection skipped the guarded factory. Production could reach
+// Gemini by handing in its own transport. The seam is an environment variable
+// production never sets, checked at the moment of injection.
+
+const stub = { generateContent: async () => ({ candidates: [] }) };
+
+function withSeam(value: string | undefined, body: () => void): void {
+  const before = process.env.LUMINA_TEST_SEAM;
+  if (value === undefined) delete process.env.LUMINA_TEST_SEAM;
+  else process.env.LUMINA_TEST_SEAM = value;
+  try { body(); } finally {
+    if (before === undefined) delete process.env.LUMINA_TEST_SEAM;
+    else process.env.LUMINA_TEST_SEAM = before;
+  }
+}
+
+withSeam(undefined, () => {
+  let refused = false;
+  try { resolveInjected(stub, 'Gemini transport', () => stub); } catch (error) {
+    refused = error instanceof ProviderBypassRefused;
+  }
+  check(refused, 'an injected transport was accepted with the seam closed');
+  let doubleRefused = false;
+  try { testDouble(stub); } catch (error) { doubleRefused = error instanceof ProviderBypassRefused; }
+  check(doubleRefused, 'testDouble must refuse outside a test');
+});
+console.log('seam: with the seam closed, an injected transport is refused');
+
+withSeam('1', () => {
+  check(resolveInjected(stub, 'Gemini transport', () => { throw new Error('factory must not run'); }) === stub,
+    'with the seam open the injected transport must be used, and the factory must not run');
+});
+console.log('seam: with the seam open the stub is used and no real client is built');
+
+// A value other than exactly "1" is not the seam.
+for (const value of ['true', '0', 'yes', '']) {
+  withSeam(value, () => {
+    let refused = false;
+    try { resolveInjected(stub, 'Gemini transport', () => stub); } catch { refused = true; }
+    check(refused, `LUMINA_TEST_SEAM="${value}" must not open the seam`);
+  });
+}
+console.log('seam: only the exact value opens it; truthy lookalikes do not');
+
+// Trust is derived, so a caller cannot launder its own object by wrapping one.
+const root = markFactoryBuilt({ generateContent: async () => ({ candidates: [] }) });
+const wrapper = { generateContent: root.generateContent };
+check(deriveTrusted(root, wrapper, 'Gemini transport') === wrapper,
+  'a wrapper around a factory-built client must be trusted');
+let launder = false;
+try { deriveTrusted({ pretend: true }, { generateContent: async () => ({}) }, 'Gemini transport'); }
+catch (error) { launder = error instanceof ProviderBypassRefused; }
+check(launder, 'wrapping an untrusted object must not make it trusted');
+console.log('seam: trust derives from a factory or a test, and cannot be laundered');
+
+// The factory itself remains gated by the paid-provider policy.
+withSeam(undefined, () => {
+  check(refuses(() => geminiTransport('plan')),
+    'the guarded factory must still refuse when no stage is enabled');
+});
+console.log('seam: closing the injection hole did not open the factory');
 
 console.log('\nOK');

@@ -4,6 +4,7 @@ import { ApiError, GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 
 import { type GenerationStage, guardExternalFactory } from '@/lib/generation/providers/policy';
+import { markFactoryBuilt, resolveInjected } from '@/lib/generation/test-seam';
 import { serverEnv } from '@/lib/env';
 
 import { type CostMeter, type GeminiUsage, priceGeminiUsage } from './pricing';
@@ -73,10 +74,12 @@ export function geminiTransport(stage: GenerationStage): GeminiTransport {
   if (!defaultTransport) {
     const vertexai = serverEnv.cloudLessonGeminiBackend === 'vertex';
     const client = new GoogleGenAI({ vertexai, apiKey: serverEnv.cloudLessonGeminiApiKey });
-    defaultTransport = {
+    // Marked as a trust root: the guard above already applied the policy, so
+    // a wrapper derived from this one is legitimate.
+    defaultTransport = markFactoryBuilt<GeminiTransport>({
       generateContent: async (request) =>
         (await client.models.generateContent(request as Parameters<typeof client.models.generateContent>[0])) as GeminiResponse,
-    };
+    });
   }
   return defaultTransport;
 }
@@ -186,7 +189,8 @@ async function call(request: GeminiRequest, options: CallOptions): Promise<Gemin
   // 'plan' is the conservative default: planning is the stage a deployment is
   // least likely to have enabled, so a call that forgot to name itself is
   // refused rather than billed under somebody else's permission.
-  const transport = options.transport ?? geminiTransport(options.billingStage ?? 'plan');
+  const transport = resolveInjected(options.transport, 'Gemini transport',
+    () => geminiTransport(options.billingStage ?? 'plan'));
   const delays = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
   let lastError: unknown;
   for (let attempt = 0; attempt <= delays.length; attempt += 1) {
@@ -567,7 +571,8 @@ export async function generateStructuredWithImage<T>(
   options: StructuredOptions<T> & { image: { mimeType: string; data: Buffer } },
 ): Promise<StructuredResult<T>> {
   // The keyframe checker looks at a generated picture, so it bills as `image`.
-  const transport = options.transport ?? geminiTransport(options.billingStage ?? 'image');
+  const transport = resolveInjected(options.transport, 'Gemini transport',
+    () => geminiTransport(options.billingStage ?? 'image'));
   const withImage: GeminiTransport = {
     generateContent: (request) => {
       const [first, ...rest] = request.contents;

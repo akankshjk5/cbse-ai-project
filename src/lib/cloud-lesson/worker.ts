@@ -11,6 +11,7 @@ import { PrepareCloudLessonInputSchema, type PrepareCloudLessonInput } from '@/l
 import { GeminiCallError, geminiTransport, type GeminiTransport } from './gemini';
 import { CloudLessonSourcePlanSchema, type CloudLessonSourcePlan, prepareCloudLesson, type PreparedCloudLesson, type PrepareCloudLessonOptions } from './prepare';
 import { CostMeter } from './pricing';
+import { deriveTrusted, resolveInjected } from '@/lib/generation/test-seam';
 
 export const PrepareJobSchema = z.object({
   id: z.string().uuid(), project_id: z.string().uuid(), owner_id: z.string().min(1),
@@ -177,15 +178,18 @@ export async function runCloudPreparationJob(options: RunPreparationOptions): Pr
     await beat();
     options.onStage?.(stage, progress);
   };
-  const transport: GeminiTransport = {
+  // Resolved once; the heartbeat wrapper derives trust from it.
+  const parent = resolveInjected(options.transport, 'Gemini transport',
+    () => geminiTransport('plan'));
+  const transport: GeminiTransport = deriveTrusted(parent, {
     async generateContent(request) {
       await beat();
-      const response = await (options.transport ?? geminiTransport('plan')).generateContent(request);
+      const response = await parent.generateContent(request);
       // Return the response so Gemini records its billed usage. The next
       // checkpoint/provider call rejects cancelled or lost work.
       return response;
     },
-  };
+  }, 'Gemini transport');
   const timer = setInterval(() => { void beat().catch(() => undefined); }, options.heartbeatMs ?? 15_000);
   try {
     await checkpoint('claimed', 1);

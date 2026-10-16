@@ -13,6 +13,7 @@ import {
 } from './audio';
 import { type CallOptions, geminiTransport, generateSpeech, type GeminiTransport, type SpeechPace, type VoiceStyle } from './gemini';
 import type { CostMeter } from './pricing';
+import { deriveTrusted, resolveInjected } from '@/lib/generation/test-seam';
 
 /**
  * Scene-aligned narration for the cloud lesson engine.
@@ -116,12 +117,15 @@ export async function voiceLesson(options: VoiceLessonOptions): Promise<SceneVoi
   const queue = options.sentences.map((sentence, position) => ({ sentence, index: position + 1 }));
   let failed = false;
   let firstError: unknown;
-  const transport: GeminiTransport = {
+  // Resolved once; the stop-on-first-failure wrapper derives trust from it.
+  const parent = resolveInjected(options.transport, 'Gemini transport',
+    () => geminiTransport('speech'));
+  const transport: GeminiTransport = deriveTrusted(parent, {
     generateContent: (request) => {
       if (failed) return Promise.reject(new Error('Another scene narration failed; remaining calls were stopped.'));
-      return (options.transport ?? geminiTransport('speech')).generateContent(request);
+      return parent.generateContent(request);
     },
-  };
+  }, 'Gemini transport');
   const workers = Array.from({ length: Math.max(1, Math.min(8, options.concurrency ?? 4)) }, async () => {
     try {
       for (let next = queue.shift(); next && !failed; next = queue.shift()) {
