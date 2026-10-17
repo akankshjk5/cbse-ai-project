@@ -29,6 +29,8 @@ if sys.platform == "win32":
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps, features
 
+import captions
+
 WIDTH, HEIGHT, FPS = 1920, 1080, 24
 SLOT_SECONDS = 7.5
 FRAMES = 180
@@ -99,11 +101,14 @@ def font(config: dict, language: str, size: int, math_font=False):
 def preflight(config: dict):
     for tool in ("ffmpeg", "ffprobe"):
         command([config[tool], "-version"], 15)
-    for language in FONTS:
-        font(config, language, 48)
-    font(config, "en-IN", 48, True)
-    if not features.check("raqm"):
-        raise ValueError("Pillow must support libraqm for Hindi/Kannada captions")
+    font(config, "en-IN", 48, True)          # DejaVu, for equation overlays
+    # Captions no longer go through Pillow, so raqm is not required. What
+    # matters is whether each script actually produces glyphs, which is a
+    # measurement rather than a capability flag.
+    shaped = captions.probe_shaping(config)
+    missing = sorted(language for language, ok in shaped.items() if not ok)
+    if missing:
+        raise ValueError(f"Caption shaping produced no glyphs for: {', '.join(missing)}")
 
 
 def sanitize_overlay(raw: dict) -> tuple[dict, str | None]:
@@ -150,17 +155,30 @@ def sanitize_overlay(raw: dict) -> tuple[dict, str | None]:
 
 
 def caption_layer(caption: str, config: dict, language: str) -> Image.Image:
-    layer = Image.new("RGBA", (WIDTH, HEIGHT))
-    draw = ImageDraw.Draw(layer)
+    """One shaped caption, drawn by libass rather than Pillow.
+
+    Pillow only shapes Indic scripts when it was built against libraqm, and the
+    published wheels are not. Unshaped Kannada detaches its vowel signs and
+    breaks conjuncts apart, so `ಪರಮಾಣುವಿನಲ್ಲಿ` reaches a classroom as
+    `ಪರಮಾಣುಪಿನಲಳಿ`. FFmpeg is already required and this build carries libass
+    with HarfBuzz, so the shaping engine was here all along.
+
+    Sizing stays a measurement rather than a guess: the caption is rendered at
+    decreasing sizes until its drawn extent fits the safe width. That costs a
+    few subprocess calls per scene, which is nothing beside a Wan clip, and it
+    cannot disagree with what the renderer actually produced.
+    """
     caption = caption.strip()
+    if not caption:
+        return Image.new("RGBA", (WIDTH, HEIGHT))
     for size in range(66, 39, -2):
-        chosen = font(config, language, size)
-        if draw.textlength(caption, font=chosen) <= 1740:
-            break
-    else:
-        raise ValueError("Caption cannot fit legibly")
-    draw.text((WIDTH // 2, 996), caption, font=chosen, fill=INK, anchor="mm")
-    return layer
+        layer = captions.render_caption(
+            caption, language, config, WIDTH, HEIGHT,
+            font_size=size, margin_v=HEIGHT - 996 - size // 2, colour=INK)
+        box = layer.getbbox()
+        if box is not None and box[2] - box[0] <= 1740:
+            return layer
+    raise ValueError("Caption cannot fit legibly")
 
 
 def math_text(text: str) -> str:

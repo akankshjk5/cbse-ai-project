@@ -66,7 +66,22 @@ class OverlayTests(unittest.TestCase):
                     font({"fontsDir": root}, "kn-IN", 40)
 
     def test_caption_legibility_guard(self):
-        with patch("compositor.font", side_effect=lambda config, language, size: ImageFont.load_default(size)):
+        """A caption that will not fit the safe width is refused, not shrunk away.
+
+        Captions are shaped by libass now, so the stub stands in for that render
+        rather than for a Pillow font. Drawn width is modelled as text length
+        times the point size, which is enough for the guard under test: the
+        question is only whether the measured extent exceeds 1740 px at every
+        size the loop tries.
+        """
+        def fake_render(text, language, config, width, height, *, font_size, **kwargs):
+            layer = Image.new("RGBA", (width, height))
+            drawn = min(width, int(len(text) * font_size * 0.5))
+            if drawn:
+                layer.paste((0, 0, 0, 255), (0, 0, drawn, font_size))
+            return layer
+
+        with patch("compositor.captions.render_caption", side_effect=fake_render):
             self.assertEqual(caption_layer("Water evaporates", {}, "en-IN").size, (1920, 1080))
             with self.assertRaisesRegex(ValueError, "legibly"):
                 caption_layer("very long " * 100, {}, "en-IN")
