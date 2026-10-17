@@ -7,8 +7,11 @@
 -- `npm run test:reuse` proves WHETHER a source may be reused, this proves that
 -- two simultaneous requests cannot both act on that answer.
 --
--- NOT YET EXECUTED. Docker was unavailable when this was written, so it is a
--- specification of the expected behaviour, not a passing result.
+-- EXECUTED against PostgreSQL 18.1. Eight concurrent sessions reserving the
+-- same lesson produced one project row and one prepare job, with no errors.
+-- Re-verified after 20261018090000 added requested_outputs to the projects
+-- table, since a new NOT NULL column on the insert path is exactly the kind of
+-- change that breaks a reservation silently.
 
 begin;
 

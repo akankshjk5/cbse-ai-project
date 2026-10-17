@@ -43,7 +43,8 @@
     "doctor": "tsx scripts/doctor.mts",
     "test:lesson-spec": "tsx scripts/test-lesson-spec.mts",
     "server:check": "python ops/cloud/check_server.py",
-    "sample:lesson": "python ops/cloud/make_sample.py"
+    "sample:lesson": "python ops/cloud/make_sample.py",
+    "test:outputs": "tsx scripts/test-outputs.mts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.8.2",
