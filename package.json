@@ -39,7 +39,8 @@
     "test:reuse": "tsx --require ./scripts/allow-server-only.cjs scripts/test-reuse-and-cost.mts",
     "test:enforcement": "tsx --require ./scripts/allow-server-only.cjs scripts/test-provider-enforcement.mts",
     "catalogue:ktbs": "tsx --require ./scripts/allow-server-only.cjs scripts/ingest-ktbs-catalogue.mts",
-    "test:ktbs": "tsx --require ./scripts/allow-server-only.cjs scripts/test-ktbs-catalogue.mts"
+    "test:ktbs": "tsx --require ./scripts/allow-server-only.cjs scripts/test-ktbs-catalogue.mts",
+    "doctor": "tsx scripts/doctor.mts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.8.2",
