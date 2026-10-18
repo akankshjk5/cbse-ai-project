@@ -4,6 +4,8 @@ import { OpenRouter } from '@openrouter/agent';
 import { z } from 'zod';
 
 import { serverEnv } from '@/lib/env';
+import { generateStructuredLocally } from './local-planner';
+import { policyEnv, resolveStage } from '@/lib/generation/providers/policy';
 import { recordReasoning } from './reasoning';
 import { recordAgentRun } from './telemetry';
 import { AgentError } from './types';
@@ -20,9 +22,22 @@ import { AgentError } from './types';
  * way to debug a bad one is to read the argument that produced it.
  */
 
-const openrouter = new OpenRouter({
-  apiKey: serverEnv.openRouterApiKey,
-});
+/**
+ * Built on first use, not at import.
+ *
+ * Constructing this at module scope read `serverEnv.openRouterApiKey`, which
+ * throws when the key is absent — so merely importing anything that reached
+ * this file failed on a deployment that had deliberately chosen to run on its
+ * own hardware. The paid dependency announced itself as an import error rather
+ * than as a decision, and no local path could be taken because the module
+ * never finished loading.
+ */
+let client: OpenRouter | null = null;
+
+function openRouterClient(): OpenRouter {
+  client ??= new OpenRouter({ apiKey: serverEnv.openRouterApiKey });
+  return client;
+}
 
 export type ChatMessage = {
   role: 'user' | 'system';
@@ -212,7 +227,7 @@ async function callModel(messages: ChatMessage[], options: CallOptions): Promise
 
   for (let attempt = 0; ; attempt++) {
     try {
-      const result = openrouter.callModel({
+      const result = openRouterClient().callModel({
         model: resolvedModel,
         instructions: instructions || undefined,
         input,
@@ -346,6 +361,45 @@ export async function generateStructured<T>(
     maxTransientRetries,
     maxSchemaAttempts = 2,
   } = options;
+
+  // Which provider serves planning is the deployment's decision, made once in
+  // src/lib/generation/providers/policy.ts and enforced here as everywhere
+  // else. A deployment that has not opted into a paid planner gets the local
+  // one; it does not get a surprise bill, and it does not get an import error.
+  if (resolveStage('plan', policyEnv()).kind === 'local') {
+    // Reasoning traces, web search and image inputs have no equivalent on the
+    // local service. A caller that needs one is told, rather than quietly
+    // served a weaker result that looks the same from outside.
+    const unsupported = [
+      images?.length ? 'image inputs' : '',
+      search ? 'web search' : '',
+    ].filter(Boolean);
+    if (unsupported.length) {
+      throw new AgentError(
+        `Stage ${stage} asked for ${unsupported.join(' and ')}, which the local `
+        + `planner cannot do. Name 'plan' in EXTERNAL_PROVIDERS with `
+        + `ALLOW_EXTERNAL_PROVIDERS=true to use a paid provider for this.`,
+        'local_planner_unsupported',
+        stage,
+      );
+    }
+    const startedAt = Date.now();
+    const local = await generateStructuredLocally({
+      systemPrompt, userPrompt, schema, timeoutMs: requestTimeoutMs,
+    });
+    // Telemetry mirrors the paid path, so a deck built locally is as
+    // inspectable afterwards as one built on a provider.
+    await recordAgentRun({
+      agent: stage,
+      attempt: 0,
+      status: 'succeeded',
+      model: local.model ?? 'local-planner',
+      input: { systemPrompt, userPrompt },
+      output: local.value,
+      latencyMs: Date.now() - startedAt,
+    });
+    return local.value;
+  }
 
   const jsonSchema = describeSchema(schema as z.ZodType<unknown>);
 
