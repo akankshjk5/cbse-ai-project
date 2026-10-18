@@ -266,7 +266,7 @@ begin
 end;
 $$;
 
-comment on function public.publish_cloud_lesson is
+comment on function public.publish_cloud_lesson(uuid) is
   'Marks a lesson complete only when every requested output has a verified '
   'object. The single gate before a lesson becomes visible or reusable.';
 
