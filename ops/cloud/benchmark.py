@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
 import struct
 import subprocess
@@ -32,6 +33,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.stdout.reconfigure(encoding="utf-8")
 
+import bench_stages
+import gpu_probe
 import local_models as lm
 
 HERE = Path(__file__).resolve().parent
@@ -51,13 +54,15 @@ class StageResult:
     stage: str
     ok: bool
     seconds: float | None = None
-    peak_vram_mib: int | None = None
-    vram_before_mib: int | None = None
-    vram_after_mib: int | None = None
     attempts: int = 0
     detail: str = ""
     # Present and true only on a value this process timed itself.
     measured: bool = False
+    # In-process allocator figures: a true peak, or unavailable. Never mixed
+    # with the device figures below.
+    process_memory: dict = field(default_factory=dict)
+    # Device-wide sampled figures, with their interval and what they can miss.
+    device_memory: dict = field(default_factory=dict)
     extra: dict = field(default_factory=dict)
 
 
@@ -146,37 +151,43 @@ def weight_facts(models_root: Path | None) -> dict:
 
 # ── Measurement helpers ─────────────────────────────────────────────────────
 
-def timed(stage: str, comfy_url: str, work, attempts: int = 1) -> StageResult:
-    """Run one stage, timing it and sampling VRAM either side.
+def timed(stage: str, work, attempts: int = 1,
+          interval: float = 0.25) -> StageResult:
+    """Run one stage, timing it and watching the GPU while it runs.
 
-    VRAM is sampled rather than continuously watched, so `peak_vram_mib` is a
-    lower bound on the true peak: a spike that ends before the stage returns is
-    invisible here. That limitation is recorded in the result rather than
-    glossed over, because a benchmark that overstates its own precision is the
-    thing this file exists to avoid.
+    Memory is reported two ways and never combined. The allocator's own peak
+    covers work in this process exactly; the sampled device series covers
+    everything, including ComfyUI's separate process, but can miss a spike
+    shorter than its interval. Neither is a before/after difference, because
+    that number would be wrong in a way nobody could see.
     """
-    before, _ = lm.comfy_vram(comfy_url)
+    gpu_probe.reset_cuda_peak()
+    watcher = gpu_probe.DeviceWatcher(interval)
     started = time.monotonic()
-    tries = 0
-    last_error = ""
-    while tries < attempts:
-        tries += 1
-        try:
-            extra = work() or {}
+    tries, last_error = 0, ""
+
+    with watcher:
+        while tries < attempts:
+            tries += 1
+            try:
+                extra = work() or {}
+                elapsed = time.monotonic() - started
+                break
+            except Exception as error:
+                last_error = f"{type(error).__name__}: {error}"
+                extra = None
+        else:
             elapsed = time.monotonic() - started
-            after, _ = lm.comfy_vram(comfy_url)
-            used = None
-            if before is not None and after is not None:
-                used = max(0, before - after)
-            return StageResult(
-                stage=stage, ok=True, seconds=round(elapsed, 3),
-                peak_vram_mib=used, vram_before_mib=before, vram_after_mib=after,
-                attempts=tries, measured=True, detail="sampled before and after, not continuous",
-                extra=extra)
-        except Exception as error:
-            last_error = str(error)
-    return StageResult(stage=stage, ok=False, attempts=tries, measured=False,
-                       detail=last_error, seconds=round(time.monotonic() - started, 3))
+
+    device = watcher.result().summary()
+    process = asdict(gpu_probe.read_cuda_memory())
+    if extra is None:
+        return StageResult(stage=stage, ok=False, attempts=tries, measured=False,
+                           seconds=round(elapsed, 3), detail=last_error,
+                           process_memory=process, device_memory=device)
+    return StageResult(stage=stage, ok=True, seconds=round(elapsed, 3), attempts=tries,
+                       measured=True, detail="", process_memory=process,
+                       device_memory=device, extra=extra)
 
 
 def wav_facts(path: Path) -> dict:
@@ -240,6 +251,61 @@ def video_facts(path: Path) -> dict:
     }
 
 
+def assemble_and_validate(ctx: dict, language: str) -> dict:
+    """Compose the generated clip and narration into a lesson, then check it.
+
+    Runs the production compositor, so the thing validated is the thing the
+    product makes. Every figure returned is read back off the finished file.
+    """
+    out = ctx["out_dir"] / f"lesson-{language}.mp4"
+    manifest = ctx["out_dir"] / "assemble.json"
+    scene_clips = []
+    for index in range(4):
+        scene = ctx["out_dir"] / f"scene-{index + 1}.mp4"
+        manifest.write_text(json.dumps({
+            "mode": "scene", "ffmpeg": "ffmpeg", "ffprobe": "ffprobe",
+            "fontsDir": str(HERE / "fonts"), "language": language,
+            "visualStyle": "illustrated",
+            "image": str(ctx["keyframe_path"].resolve()),
+            "rawClip": str(ctx["clip_path"].resolve()) if index == 0 else None,
+            "output": str(scene.resolve()),
+            "scene": {"duration_seconds": SLOT,
+                      "caption": f"Scene {index + 1}",
+                      "title": None,
+                      "motion_mode": "animate" if index == 0 else "still",
+                      "overlay": {"kind": "none"}},
+        }), encoding="utf-8")
+        result = subprocess.run([sys.executable, str(HERE / "compositor.py"),
+                                 "--manifest", str(manifest)],
+                                capture_output=True, text=True, cwd=str(REPO))
+        if result.returncode:
+            tail = (result.stderr or "").strip().splitlines()
+            raise BenchmarkFailed(f"scene {index + 1}: {tail[-1] if tail else 'failed'}")
+        scene_clips.append(str(scene.resolve()))
+
+    narration = ctx["out_dir"] / f"narration-{language}.wav"
+    manifest.write_text(json.dumps({
+        "mode": "assemble", "ffmpeg": "ffmpeg", "ffprobe": "ffprobe",
+        "fontsDir": str(HERE / "fonts"), "language": language,
+        "visualStyle": "illustrated", "clips": scene_clips,
+        "narration": str(narration.resolve()), "output": str(out.resolve()),
+        "durationSeconds": 30,
+        "scenes": [{"scene_index": i + 1} for i in range(4)],
+    }), encoding="utf-8")
+    result = subprocess.run([sys.executable, str(HERE / "compositor.py"),
+                             "--manifest", str(manifest)],
+                            capture_output=True, text=True, cwd=str(REPO))
+    if result.returncode:
+        tail = (result.stderr or "").strip().splitlines()
+        raise BenchmarkFailed(f"assembly: {tail[-1] if tail else 'failed'}")
+
+    facts = video_facts(out)
+    facts["path"] = str(out)
+    facts["resolution_ok"] = facts["width"] == 1920 and facts["height"] == 1080
+    facts["frame_rate_ok"] = facts["frame_rate"] == "24/1"
+    return facts
+
+
 # ── The run ─────────────────────────────────────────────────────────────────
 
 def main() -> int:
@@ -250,6 +316,11 @@ def main() -> int:
                         help="Kannada by default: it is the hardest case and the least proven")
     parser.add_argument("--style", default="illustrated")
     parser.add_argument("--retries", type=int, default=2)
+    parser.add_argument("--languages", default="en-IN,hi-IN,kn-IN")
+    parser.add_argument("--seed", type=int, default=20261019)
+    parser.add_argument("--wan-steps", type=int, default=20)
+    parser.add_argument("--interval", type=float, default=0.25,
+                        help="GPU sampling interval in seconds; recorded in the report")
     args = parser.parse_args()
 
     comfy = lm.DEFAULT_ENDPOINTS["comfy"]
@@ -284,33 +355,65 @@ def main() -> int:
 
     print(f"GPU: {report.gpu.get('name', 'unknown')} "
           f"({report.gpu.get('comfy_free_vram_mib', '?')} MiB free)")
-    print(f"torch {report.versions.get('torch')} · CUDA {report.versions.get('cuda')}\n")
+    print(f"torch {report.versions.get('torch')} · CUDA {report.versions.get('cuda')}")
+    print(f"device sampling: {gpu_probe.DeviceWatcher().method} every {args.interval}s")
+    print()
 
-    # Stages are deliberately NOT implemented as stubs. Each one calls the real
-    # service through local_models; if that call is not yet written, the stage
-    # records a failure saying so rather than returning a plausible number.
-    print("Stages are wired to the real services. Any that is not yet implemented")
-    print("records an explicit failure — see ops/cloud/DEPLOYMENT.md §9.\n")
+    languages = [l.strip() for l in args.languages.split(",") if l.strip()]
+    out_dir = args.out.parent / "artifacts"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ctx = {
+        "endpoints": {**lm.DEFAULT_ENDPOINTS},
+        "workflows": REPO / "ops" / "runpod" / "workflows" / "api",
+        "out_dir": out_dir, "languages": languages, "seed": args.seed,
+        "wan_steps": args.wan_steps,
+        "comfy_input_dir": os.environ.get("COMFYUI_INPUT_DIR"),
+        "timeouts": {"plan": 600.0, "keyframe": 900.0, "vision": 180.0,
+                     "motion": 1800.0, "tts": 300.0, "translate": 300.0},
+    }
 
     overall_started = time.monotonic()
-    for stage_name in ("plan", "keyframe", "motion", "vision", "tts"):
-        runner = STAGE_RUNNERS.get(stage_name)
+    # Order matters: the plan feeds the keyframe, the keyframe feeds vision and
+    # motion, and the translation feeds the non-English narration.
+    for stage_name in ("plan", "translate", "keyframe", "vision", "motion", "tts"):
+        runner = bench_stages.STAGES.get(stage_name)
         if runner is None:
-            result = StageResult(
-                stage=stage_name, ok=False, measured=False,
-                detail="not implemented in this harness yet; no measurement taken")
+            result = StageResult(stage=stage_name, ok=False, measured=False,
+                                 detail="no runner registered")
         else:
-            result = timed(stage_name, comfy, lambda: runner(args), attempts=args.retries)
+            result = timed(stage_name, lambda r=runner: r(ctx),
+                           attempts=args.retries, interval=args.interval)
         report.stages.append(asdict(result))
-        mark = "ok " if result.ok else "FAIL"
+        mark = "ok  " if result.ok else "FAIL"
         secs = f"{result.seconds:.2f}s" if result.seconds is not None else "—"
-        print(f"  {mark} {stage_name:9s} {secs:>9s}  {result.detail[:70]}")
+        seen = result.device_memory.get("max_observed_used_mib")
+        vram = f"{seen} MiB seen" if seen is not None else "vram n/a"
+        print(f"  {mark} {stage_name:10s} {secs:>9s}  {vram:>16s}  {result.detail[:46]}")
 
     report.output["end_to_end_seconds"] = round(time.monotonic() - overall_started, 3)
-    report.complete = all(s["ok"] for s in report.stages)
+    report.output["artifacts"] = str(out_dir)
+    report.output["languages"] = languages
+
+    # A lesson video is assembled only when every input really exists. A
+    # partial run is NOT_EXECUTED, never a result with gaps.
+    if ctx.get("clip_path") and ctx.get("narration"):
+        try:
+            report.output["video"] = assemble_and_validate(ctx, languages[0])
+        except Exception as error:
+            report.failures.append(f"assembly: {type(error).__name__}: {error}")
+            report.output["video"] = {"status": "FAILED", "reason": str(error)[:300]}
+    else:
+        report.output["video"] = {
+            "status": "NOT_EXECUTED",
+            "reason": "motion or narration did not run, so no lesson video was assembled",
+        }
+
+    report.complete = (all(s["ok"] for s in report.stages)
+                       and report.output["video"].get("full_decode_clean") is True)
     if not report.complete:
         report.failures.extend(
             f"{s['stage']}: {s['detail']}" for s in report.stages if not s["ok"])
+
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(asdict(report), indent=2), encoding="utf-8")
@@ -320,9 +423,9 @@ def main() -> int:
     return 0 if report.complete else 1
 
 
-# Filled in as each stage is wired to its service. Absent means the stage
-# reports a failure, which is the correct behaviour for something unmeasured.
-STAGE_RUNNERS: dict = {}
+
+
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

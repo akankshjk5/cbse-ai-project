@@ -14,6 +14,7 @@ submitted.
 """
 from __future__ import annotations
 
+import base64
 import json
 import time
 import urllib.error
@@ -25,10 +26,22 @@ from pathlib import Path
 # host configuration serves both processes.
 DEFAULT_ENDPOINTS = {
     "comfy": "http://127.0.0.1:8188",
+    "planner": "http://127.0.0.1:18080",
     "tts": "http://127.0.0.1:18081",
     "translate": "http://127.0.0.1:18082",
-    "planner": "http://127.0.0.1:18080",
+    "vision": "http://127.0.0.1:18083",
     "worker": "http://127.0.0.1:8090",
+}
+
+# Paths as the services in ops/runpod/local_*_service.py actually serve them,
+# read from those files rather than chosen here. `/synthesize` is not `/speak`,
+# and the planner answers on `/structured`; an invented path fails at runtime
+# on a host where everything is correctly installed, which is the worst time.
+SERVICE_PATHS = {
+    "planner": "/structured",
+    "tts": "/synthesize",
+    "translate": "/translate",
+    "vision": "/check",
 }
 
 # Exact files the shipped workflows name. A deployment is not ready until all
@@ -172,8 +185,10 @@ def readiness(endpoints: dict[str, str] | None = None,
     report = Readiness()
     report.services = [
         probe_service("comfyui", endpoints["comfy"], "/system_stats"),
+        probe_service("planner", endpoints["planner"], "/health"),
         probe_service("tts", endpoints["tts"], "/health"),
         probe_service("translate", endpoints["translate"], "/health"),
+        probe_service("vision", endpoints["vision"], "/health"),
     ]
     report.free_vram_mib, report.total_vram_mib = comfy_vram(endpoints["comfy"])
     report.missing_weights = check_weights(models_root)
@@ -295,21 +310,35 @@ def await_comfy(comfy_url: str, prompt_id: str, *,
         time.sleep(poll_seconds)
 
 
-def speak(tts_url: str, text: str, language: str, *, voice: str,
-          pace: str = "natural", timeout: float = 120.0) -> bytes:
-    """One scene's narration as WAV bytes from the local TTS service.
+def synthesize(
+    tts_url: str, transcript: str, language_code: str, *,
+    pace: str = "natural", speaker: str | None = None,
+    scene_seconds: float | None = None, timeout: float = 300.0,
+) -> bytes:
+    """One narration take as WAV bytes, from the local Parler service.
 
-    The returned audio is measured by the caller rather than trusted: a model
-    that silently truncates a long sentence would otherwise produce a lesson
-    whose narration stops mid-word, and only the measurement catches it.
+    The payload matches `ops/runpod/local_tts_service.py`: it accepts either a
+    single `transcript` or a list of `sceneTranscripts`, and returns raw audio
+    rather than JSON. The caller measures the result instead of trusting it —
+    a service whose model failed to load can still return a well-formed WAV of
+    silence, and only the samples show that.
     """
-    if not text.strip():
+    if not transcript.strip():
         raise LocalModelError("Refusing to synthesise empty narration")
-    url = tts_url.rstrip("/") + "/speak"
-    body = json.dumps({"text": text, "language": language,
-                       "voice": voice, "pace": pace}).encode("utf-8")
+    payload: dict = {
+        "transcript": transcript,
+        "languageCode": language_code,
+        "pace": pace,
+    }
+    if speaker:
+        payload["speaker"] = speaker
+    if scene_seconds is not None:
+        payload["sceneDurationSeconds"] = scene_seconds
+
+    url = tts_url.rstrip("/") + SERVICE_PATHS["tts"]
     request = urllib.request.Request(
-        url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"}, method="POST")
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             audio = response.read()
@@ -318,9 +347,77 @@ def speak(tts_url: str, text: str, language: str, *, voice: str,
             f"Could not reach the TTS service at {tts_url}: "
             f"{getattr(error, 'reason', error)}") from error
     if not audio:
-        raise LocalModelError(f"TTS returned no audio for {language}")
+        raise LocalModelError(f"TTS returned no audio for {language_code}")
     if not audio.startswith(b"RIFF"):
         raise LocalModelError(
             f"TTS returned {len(audio)} bytes that are not a WAV file; "
-            "check the service's response format")
+            "the service probably answered with an error body")
     return audio
+
+
+def plan_structured(
+    planner_url: str, system_prompt: str, user_prompt: str,
+    json_schema: dict, *, max_new_tokens: int = 3200, timeout: float = 600.0,
+) -> dict:
+    """A schema-constrained plan from Qwen3-4B. Returns the whole envelope.
+
+    `ops/runpod/local_planner_service.py` answers on `/structured` with
+    `{output, model, ...}`; the model identity is kept so a benchmark can
+    record which build produced the timing.
+    """
+    payload = {
+        "systemPrompt": system_prompt,
+        "userPrompt": user_prompt,
+        "jsonSchema": json_schema,
+        "maxNewTokens": max_new_tokens,
+    }
+    try:
+        return _post_json(planner_url.rstrip("/") + SERVICE_PATHS["planner"], payload, timeout)
+    except urllib.error.URLError as error:
+        raise LocalModelError(
+            f"Could not reach the planner at {planner_url}: "
+            f"{getattr(error, 'reason', error)}") from error
+
+
+def translate(
+    translate_url: str, texts: list[str], language_code: str, timeout: float = 300.0,
+) -> list[str]:
+    """IndicTrans2 on CPU. Returns one translation per input, in order."""
+    if not texts:
+        raise LocalModelError("Refusing to translate an empty list")
+    try:
+        result = _post_json(translate_url.rstrip("/") + SERVICE_PATHS["translate"],
+                            {"texts": texts, "languageCode": language_code}, timeout)
+    except urllib.error.URLError as error:
+        raise LocalModelError(
+            f"Could not reach the translation service at {translate_url}: "
+            f"{getattr(error, 'reason', error)}") from error
+    out = result.get("translations")
+    if not isinstance(out, list) or len(out) != len(texts):
+        raise LocalModelError(
+            f"Translation returned {len(out) if isinstance(out, list) else 'no'} results "
+            f"for {len(texts)} inputs")
+    return [str(item) for item in out]
+
+
+def vision_check(
+    vision_url: str, image_bytes: bytes, description: str,
+    mode: str = "image", timeout: float = 180.0,
+) -> dict:
+    """Qwen2.5-VL on one frame.
+
+    Returns the service's verdict unchanged: `passed`, plus `shows_subject`,
+    `deformed`, `has_writing`, `unsafe` and `reason`, as
+    `ops/runpod/media_worker.py` consumes them.
+    """
+    payload = {
+        "description": description[:1200],
+        "mode": mode,
+        "imageBase64": base64.b64encode(image_bytes).decode("ascii"),
+    }
+    try:
+        return _post_json(vision_url.rstrip("/") + SERVICE_PATHS["vision"], payload, timeout)
+    except urllib.error.URLError as error:
+        raise LocalModelError(
+            f"Could not reach the vision service at {vision_url}: "
+            f"{getattr(error, 'reason', error)}") from error
