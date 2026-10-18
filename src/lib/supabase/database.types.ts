@@ -1039,6 +1039,114 @@ export type Database = {
           },
         ]
       }
+      lesson_assets: {
+        Row: {
+          id: string
+          project_id: string
+          kind: string
+          language_code: string | null
+          scene_index: number | null
+          storage_bucket: string
+          storage_key: string
+          checksum_sha256: string | null
+          byte_size: number | null
+          mime_type: string | null
+          version: number
+          status: string
+          cache_key: string | null
+          failure_reason: string | null
+          created_at: string
+          validated_at: string | null
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          kind: string
+          language_code?: string | null
+          scene_index?: number | null
+          storage_bucket: string
+          storage_key: string
+          checksum_sha256?: string | null
+          byte_size?: number | null
+          mime_type?: string | null
+          version?: number
+          status?: string
+          cache_key?: string | null
+          failure_reason?: string | null
+          created_at?: string
+          validated_at?: string | null
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          kind?: string
+          language_code?: string | null
+          scene_index?: number | null
+          storage_bucket?: string
+          storage_key?: string
+          checksum_sha256?: string | null
+          byte_size?: number | null
+          mime_type?: string | null
+          version?: number
+          status?: string
+          cache_key?: string | null
+          failure_reason?: string | null
+          created_at?: string
+          validated_at?: string | null
+        }
+        Relationships: []
+      }
+      lesson_reuse_events: {
+        Row: {
+          id: string
+          requested_by: string
+          project_id: string
+          source_project_id: string | null
+          school_id: string | null
+          decision: string
+          satisfied_outputs: string[]
+          generated_outputs: string[]
+          reused_asset_ids: string[]
+          savings_usd: number | null
+          savings_basis: string
+          savings_gpu_seconds: number | null
+          rationale: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          requested_by: string
+          project_id: string
+          source_project_id?: string | null
+          school_id?: string | null
+          decision: string
+          satisfied_outputs?: string[]
+          generated_outputs?: string[]
+          reused_asset_ids?: string[]
+          savings_usd?: number | null
+          savings_basis?: string
+          savings_gpu_seconds?: number | null
+          rationale?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          requested_by?: string
+          project_id?: string
+          source_project_id?: string | null
+          school_id?: string | null
+          decision?: string
+          satisfied_outputs?: string[]
+          generated_outputs?: string[]
+          reused_asset_ids?: string[]
+          savings_usd?: number | null
+          savings_basis?: string
+          savings_gpu_seconds?: number | null
+          rationale?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       lesson_video_jobs: {
         Row: {
           attempts: number
@@ -2238,6 +2346,25 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      finalize_lesson_asset: {
+        Args: {
+          p_byte_size: number
+          p_cache_key?: string | null
+          p_checksum_sha256: string
+          p_kind: string
+          p_language_code?: string | null
+          p_mime_type: string
+          p_project_id: string
+          p_scene_index?: number | null
+          p_storage_bucket: string
+          p_storage_key: string
+        }
+        Returns: Json
+      }
+      mark_lesson_asset_unusable: {
+        Args: { p_asset_id: string; p_reason: string; p_status: string }
+        Returns: Json
       }
       lesson_available_outputs: {
         Args: { p_project_id: string }
