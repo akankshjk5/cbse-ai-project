@@ -5,6 +5,7 @@ import { listCloudLessons } from '@/lib/data/cloud-lessons';
 import { CreateCloudLessonSchema, CloudLessonProjectSchema } from '@/lib/videos/cloud-lesson-contracts';
 import { cloudLessonApiError } from '@/lib/cloud-lesson/api-errors';
 import { admitGeneration } from '@/lib/generation/admission';
+import { admitLessonRequest } from '@/lib/generation/request';
 export async function GET() {
   try { const owner = await requireUserIdOrThrow(); return NextResponse.json({ projects: await listCloudLessons(owner) }, { headers: { 'Cache-Control': 'no-store' } }); }
   catch (error) { return cloudLessonApiError(error); }
@@ -20,19 +21,42 @@ export async function POST(request: Request) {
     if (!admission.admitted) {
       return NextResponse.json({ error: admission.reason }, { status: 503 });
     }
+    // Reserve first, then plan. The reservation is the only thing that decides
+    // whether a project exists, because deciding in the application means two
+    // simultaneous requests both find nothing and both insert.
+    const admitted = await admitLessonRequest({
+      classLevel: input.classLevel,
+      subject: input.subject,
+      topic: input.topic,
+      languageCode: input.languageCode,
+      durationSeconds: input.durationSeconds,
+      visualStyle: input.visualStyle,
+      requestedOutputs: input.requestedOutputs,
+    });
     const client = await createClient();
-    const { data, error } = await client.rpc('reserve_cloud_lesson', { p_class_level: input.classLevel,
-      p_subject: input.subject, p_topic: input.topic, p_language_code: input.languageCode, p_target_duration_seconds: input.durationSeconds, p_visual_style: input.visualStyle });
+    const { data, error } = await client
+      .from('cloud_lesson_projects').select('*').eq('id', admitted.projectId).single();
     if (error) throw error;
-    const project = CloudLessonProjectSchema.parse(data?.[0]);
+    const project = CloudLessonProjectSchema.parse(data);
     return NextResponse.json({
       project,
-      cached: project.status === 'succeeded',
-      reusedVisuals: !!project.reused_from_project_id,
+      cached: admitted.servedFromCache,
+      reusedVisuals: !!admitted.sourceProjectId,
+      // What the teacher asked for, what already exists, and what each
+      // remaining output will cost in stages. A caller can show "found it",
+      // "building the deck only" or "generating" without guessing.
+      requestedOutputs: input.requestedOutputs,
+      availableOutputs: admitted.available,
+      outputs: admitted.plan.outputs.map((output) => ({
+        kind: output.kind, disposition: output.disposition, reason: output.reason,
+      })),
+      decision: admitted.plan.decision,
+      decisionVersion: admitted.plan.decisionVersion,
+      stages: admitted.plan.stages,
       // Which provider will serve each stage, so a caller can see before any
       // work happens whether this lesson will spend at a third party.
       generator: admission.generator,
       paidStages: admission.paidStages,
-    }, { status: project.status === 'succeeded' ? 200 : 202 });
+    }, { status: admitted.servedFromCache ? 200 : 202 });
   } catch (error) { return cloudLessonApiError(error); }
 }

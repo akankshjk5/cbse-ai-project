@@ -216,6 +216,14 @@ export type Database = {
       }
       cloud_lesson_projects: {
         Row: {
+          budget_usd: number | null
+          chapter: string | null
+          content_version: string
+          curriculum_version: string
+          difficulty: string
+          generator_version: string
+          model_versions: Json
+          school_id: string | null
           cache_key: string | null
           class_level: number
           completed_at: string | null
@@ -232,6 +240,7 @@ export type Database = {
           narration_text: string | null
           narration_url: string | null
           owner_id: string
+          requested_outputs: ("video" | "pptx")[]
           reused_from_project_id: string | null
           status: string
           subject: string
@@ -242,6 +251,14 @@ export type Database = {
           visual_style: string
         }
         Insert: {
+          budget_usd?: number | null
+          chapter?: string | null
+          content_version?: string
+          curriculum_version?: string
+          difficulty?: string
+          generator_version?: string
+          model_versions?: Json
+          school_id?: string | null
           cache_key?: string | null
           class_level: number
           completed_at?: string | null
@@ -258,6 +275,7 @@ export type Database = {
           narration_text?: string | null
           narration_url?: string | null
           owner_id: string
+          requested_outputs?: ("video" | "pptx")[]
           reused_from_project_id?: string | null
           status?: string
           subject: string
@@ -268,6 +286,14 @@ export type Database = {
           visual_style?: string
         }
         Update: {
+          budget_usd?: number | null
+          chapter?: string | null
+          content_version?: string
+          curriculum_version?: string
+          difficulty?: string
+          generator_version?: string
+          model_versions?: Json
+          school_id?: string | null
           cache_key?: string | null
           class_level?: number
           completed_at?: string | null
@@ -284,6 +310,7 @@ export type Database = {
           narration_text?: string | null
           narration_url?: string | null
           owner_id?: string
+          requested_outputs?: ("video" | "pptx")[]
           reused_from_project_id?: string | null
           status?: string
           subject?: string
@@ -2211,6 +2238,37 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      lesson_available_outputs: {
+        Args: { p_project_id: string }
+        Returns: ("video" | "pptx")[]
+      }
+      lesson_outputs_outstanding: {
+        Args: { p_project_id: string }
+        Returns: ("video" | "pptx")[]
+      }
+      lesson_outputs_ready: {
+        Args: { p_project_id: string }
+        Returns: boolean
+      }
+      publish_cloud_lesson: {
+        Args: { p_project_id: string }
+        Returns: boolean
+      }
+      record_lesson_reuse: {
+        Args: {
+          p_decision: string
+          p_generated: ("video" | "pptx")[]
+          p_project_id: string
+          p_rationale: string | null
+          p_reused_asset_ids: string[]
+          p_satisfied: ("video" | "pptx")[]
+          p_savings_basis: string
+          p_savings_gpu_seconds: number | null
+          p_savings_usd: number | null
+          p_source_project_id: string | null
+        }
+        Returns: Json
       }
       reserve_cloud_lesson: {
         Args: {

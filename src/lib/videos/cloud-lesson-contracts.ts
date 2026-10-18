@@ -112,9 +112,23 @@ export const CreateCloudLessonSchema = z.object({
   languageCode: z.enum(CLOUD_LESSON_LANGUAGE_CODES).default('en-IN'),
   durationSeconds: z.union([z.literal(30), z.literal(60)]).default(60),
   visualStyle: z.enum(CLOUD_LESSON_VISUAL_STYLES).default('illustrated'),
+  /**
+   * What the teacher actually wants. Defaults to the video alone, which is
+   * what every caller asked for before this existed — a teacher who wants
+   * only a deck should never cause a video to be rendered, and that is not
+   * expressible without asking.
+   */
+  requestedOutputs: z.array(z.enum(['video', 'pptx']))
+    .min(1).max(2)
+    .refine((kinds) => new Set(kinds).size === kinds.length,
+      { message: 'requestedOutputs must not repeat a kind' })
+    .default(['video']),
 });
-export type CreateCloudLessonInput = Omit<z.infer<typeof CreateCloudLessonSchema>, 'durationSeconds' | 'visualStyle'> & {
+export type CreateCloudLessonInput = Omit<z.infer<typeof CreateCloudLessonSchema>,
+  'durationSeconds' | 'visualStyle' | 'requestedOutputs'> & {
   durationSeconds?: 30 | 60; visualStyle?: (typeof CLOUD_LESSON_VISUAL_STYLES)[number];
+  // Defaulted by the schema, so a caller that only wants a video says nothing.
+  requestedOutputs?: ('video' | 'pptx')[];
 };
 
 /**
@@ -207,6 +221,20 @@ export const CloudLessonProjectSchema = z.object({
   updated_at: z.string(),
   completed_at: z.string().nullable(),
   reused_from_project_id: z.string().uuid().nullable().optional(),
+
+  // Columns the reuse migrations added. The drift guard below is what caught
+  // that these were in the database and in neither the generated types nor
+  // this contract — every one is optional here because an older row predates
+  // the column's default being applied.
+  school_id: z.string().uuid().nullable().optional(),
+  chapter: z.string().nullable().optional(),
+  difficulty: z.string().optional(),
+  curriculum_version: z.string().optional(),
+  generator_version: z.string().optional(),
+  content_version: z.string().optional(),
+  model_versions: z.record(z.string(), z.string()).optional(),
+  budget_usd: z.coerce.number().nullable().optional(),
+  requested_outputs: z.array(z.enum(['video', 'pptx'])).optional(),
 });
 export type CloudLessonProject = z.infer<typeof CloudLessonProjectSchema>;
 
