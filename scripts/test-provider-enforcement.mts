@@ -249,33 +249,41 @@ check(localDefault.providers.motion.kind === 'deterministic',
   'motion must default to deterministic at the route gate too');
 console.log('admission: a default deployment admits local generation and no paid stage');
 
-// ── Outputs nothing can build ─────────────────────────────────────────────
-// A teacher could ask for a deck: the request was admitted, a project row was
-// reserved, planOutputs returned stages ['plan','image'] and the route answered
-// 202. No worker claims that work -- src/lib/cloud-lesson/ does not mention a
-// deck anywhere -- so the deck never arrived and no failure was ever reported.
+// ── Outputs and their producers ───────────────────────────────────────────
+// A teacher used to be able to ask for a deck and wait forever: the request was
+// admitted, a project row was reserved, planOutputs returned stages
+// ['plan','image'] and the route answered 202, but no job kind existed so no
+// worker could claim the work and no failure was ever reported.
+//
+// Both outputs now have a producer -- 'deck' jobs and src/lib/cloud-lesson/
+// deck-worker.ts -- so both are admitted. The gate is unchanged; what changed
+// is that nothing is missing from it.
 
-check(admitGeneration({}, undefined, ['video']).admitted,
-  'video has a worker and must still be admitted');
-check(admitGeneration({}, undefined, []).admitted,
-  'a caller that names no output must behave as before');
+for (const requested of [['video'], ['pptx'], ['video', 'pptx'], []] as const) {
+  const admitted = admitGeneration({}, undefined, requested);
+  check(admitted.admitted,
+    `${requested.length ? requested.join('+') : 'no output named'} must be admitted: ${admitted.reason}`);
+  check(admitted.unsupported.length === 0,
+    `nothing should be unsupported for ${requested.join('+')}`);
+}
+console.log('admission: video, pptx, both, and an unnamed output are all admitted');
 
-const deckOnly = admitGeneration({}, undefined, ['pptx']);
-check(!deckOnly.admitted, 'a deck-only request must be refused while nothing builds a deck');
-check(deckOnly.unsupported.includes('pptx'), 'the refusal must name pptx as the unsupported kind');
-check(/retrying will not change/i.test(deckOnly.reason ?? ''),
-  `the reason must say a retry will not help: ${deckOnly.reason}`);
-check((deckOnly.reason ?? '').includes('video'),
-  'the reason must say what this deployment CAN produce');
-
-const both = admitGeneration({}, undefined, ['video', 'pptx']);
-check(!both.admitted, 'asking for video AND a deck must not be half-admitted');
-check(both.unsupported.length === 1 && both.unsupported[0] === 'pptx',
-  'only the unproducible kind should be named');
-console.log('admission: an output with no producer is refused rather than accepted and dropped');
+// The refusal path still works. Asserted through the helper rather than by
+// un-declaring a kind, so this keeps testing the mechanism after every kind
+// has a producer.
+check(unsupportedOutputs([]).length === 0, 'an empty request has nothing unsupported');
+for (const kind of OUTPUT_KINDS) {
+  check(!unsupportedOutputs([kind]).includes(kind),
+    `${kind} is declared producible, so it must not be reported unsupported`);
+}
+console.log('admission: the refusal helper reports nothing unsupported now that both kinds build');
 
 // The constant must not be flipped optimistically. Declaring a kind producible
 // is a claim that a worker exists, so the claim is checked against the workers.
+// Declaring a kind producible is a claim that a worker exists, so the claim is
+// checked against the workers. This is what stopped 'pptx' being added
+// optimistically before deck-worker.ts was written, and it stays useful: the
+// next output kind cannot be declared before something builds it.
 for (const kind of PRODUCIBLE_OUTPUTS) {
   const workers = tsFilesUnder(join('src', 'lib', 'cloud-lesson'));
   const mentions = workers.filter((f) => readFileSync(f, 'utf8').includes(kind));

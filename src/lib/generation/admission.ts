@@ -46,7 +46,7 @@ import { generatorIdFromEnv, type GeneratorId } from '@/lib/generation/providers
  * until then. When a deck worker exists, add 'pptx' here and the route starts
  * accepting it — this constant is the only thing standing in the way.
  */
-export const PRODUCIBLE_OUTPUTS: readonly OutputKind[] = ['video'] as const;
+export const PRODUCIBLE_OUTPUTS: readonly OutputKind[] = ['video', 'pptx'] as const;
 
 /** Output kinds the caller asked for that nothing in this deployment builds. */
 export function unsupportedOutputs(requested: readonly OutputKind[]): OutputKind[] {

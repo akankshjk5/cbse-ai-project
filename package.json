@@ -52,7 +52,9 @@
     "deck:original": "tsx --require ./scripts/allow-server-only.cjs scripts/make-original-deck.mts",
     "test:image-provider": "tsx --require ./scripts/allow-server-only.cjs scripts/test-image-provider.mts",
     "test:local-image": "tsx --require ./scripts/allow-server-only.cjs scripts/test-local-image-contract.mts",
-    "test:lesson-deck": "tsx --require ./scripts/allow-server-only.cjs scripts/test-lesson-deck.mts"
+    "test:lesson-deck": "tsx --require ./scripts/allow-server-only.cjs scripts/test-lesson-deck.mts",
+    "test:deck-worker": "tsx --require ./scripts/allow-server-only.cjs scripts/test-deck-worker.mts",
+    "worker:cloud-deck": "tsx --env-file=.env --require ./scripts/allow-server-only.cjs scripts/cloud-deck-worker.mts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.8.2",

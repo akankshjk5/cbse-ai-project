@@ -2175,6 +2175,10 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      enqueue_cloud_lesson_deck: {
+        Args: { p_project_id: string }
+        Returns: string
+      }
       fail_cloud_lesson_job: {
         Args: {
           p_cost_usd?: number

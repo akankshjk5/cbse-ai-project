@@ -101,6 +101,30 @@ export async function admitLessonRequest(request: LessonRequest): Promise<Admitt
     source,
   );
 
+  // Queue the deck only when the plan says one has to be built. A reused deck
+  // needs no job, and queueing one anyway would spend planner time
+  // regenerating something the teacher is about to be served from cache.
+  //
+  // Idempotent in the database: a partial unique index on (project_id) where
+  // kind = 'deck' means a second call returns the first job, so two
+  // simultaneous requests produce one deck. That is why this can live in the
+  // application rather than inside reserve_cloud_lesson, which has been
+  // redefined six times and is the most delicate function in the schema.
+  const deck = plan.outputs.find((output) => output.kind === 'pptx');
+  if (deck && deck.disposition !== 'reuse') {
+    const { error: deckError } = await client
+      .rpc('enqueue_cloud_lesson_deck', { p_project_id: project.id });
+    // Not fatal to the request: the video half may be queued and running, and
+    // failing the whole reservation because the deck could not be queued would
+    // lose work the teacher can already use. It must still be visible, so it
+    // is logged rather than swallowed.
+    if (deckError) {
+      console.error('[generation] could not queue the lesson deck', {
+        projectId: project.id, error: deckError.message,
+      });
+    }
+  }
+
   return {
     projectId: project.id,
     status: project.status,
