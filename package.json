@@ -42,6 +42,7 @@
     "test:ktbs": "tsx --require ./scripts/allow-server-only.cjs scripts/test-ktbs-catalogue.mts",
     "doctor": "tsx scripts/doctor.mts",
     "test:lesson-spec": "tsx scripts/test-lesson-spec.mts",
+    "test:db": "node scripts/db-test.mjs",
     "server:check": "python ops/cloud/check_server.py",
     "sample:lesson": "python ops/cloud/make_sample.py",
     "test:outputs": "tsx scripts/test-outputs.mts",

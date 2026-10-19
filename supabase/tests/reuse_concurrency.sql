@@ -1,6 +1,17 @@
 -- Database-level reuse properties. Needs a running Postgres:
 --
---   npm run db:start && psql "$DATABASE_URL" -f supabase/tests/reuse_concurrency.sql
+--   npm run test:db          -- runs this and the other three suites
+--
+-- or by hand, against a database with the migrations and
+-- supabase/tests/00_supabase_shim.sql applied:
+--
+--   psql "$DATABASE_URL" -f supabase/tests/reuse_concurrency.sql
+--
+-- Each property signs in as its own teacher. reserve_cloud_lesson needs
+-- clerk_user_id(), and one teacher cannot carry the whole file: the engine caps
+-- a teacher at two lessons generating at once, and properties 1-3 leave theirs
+-- active, so a single signed-in user hits that cap at property 4. The cap is a
+-- product rule and is left alone; none of these properties is about it.
 --
 -- These are the properties the offline suite cannot cover, because they are
 -- about locking and visibility rather than about the compatibility decision:
@@ -18,6 +29,7 @@ begin;
 -- 1. A second reservation for an identical lesson returns the first row rather
 --    than inserting a second. Serialised by the advisory lock in
 --    reserve_cloud_lesson, so the second caller sees the first's committed row.
+select public.test_become('teacher_reuse_p1');
 do $$
 declare a uuid; b uuid; n int;
 begin
@@ -34,6 +46,7 @@ begin
 end $$;
 
 -- 2. Case and spacing do not split one topic into two lessons.
+select public.test_become('teacher_reuse_p2');
 do $$
 declare a uuid; b uuid;
 begin
@@ -47,6 +60,7 @@ end $$;
 
 -- 3. A changed model version must NOT reuse. Simulated by bumping the stored
 --    model set on the source; the next reservation should refuse it as a source.
+select public.test_become('teacher_reuse_p3');
 do $$
 declare src uuid; fresh uuid; reused uuid;
 begin
@@ -66,6 +80,7 @@ begin
 end $$;
 
 -- 4. A failed lesson is never a reuse source.
+select public.test_become('teacher_reuse_p4');
 do $$
 declare src uuid; fresh uuid; reused uuid;
 begin
@@ -82,6 +97,7 @@ begin
 end $$;
 
 -- 5. An unpriced job may not carry a cost.
+select public.test_become('teacher_reuse_p5');
 do $$
 begin
   begin
