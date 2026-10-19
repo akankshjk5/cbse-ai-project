@@ -17,9 +17,14 @@ export async function POST(request: Request) {
     // Refuse before reserving: a lesson whose stages this deployment cannot run
     // should fail at the request, not minutes later inside a worker. The
     // factories in src/lib/cloud-lesson/ remain the control over spending.
-    const admission = admitGeneration();
+    const admission = admitGeneration(undefined, undefined, input.requestedOutputs);
     if (!admission.admitted) {
-      return NextResponse.json({ error: admission.reason }, { status: 503 });
+      // 501 when the deployment has no producer for a requested output: that is
+      // a missing feature, and answering 503 would invite a retry loop against
+      // something no amount of waiting will provide.
+      return NextResponse.json(
+        { error: admission.reason, unsupportedOutputs: admission.unsupported },
+        { status: admission.unsupported.length > 0 ? 501 : 503 });
     }
     // Reserve first, then plan. The reservation is the only thing that decides
     // whether a project exists, because deciding in the application means two

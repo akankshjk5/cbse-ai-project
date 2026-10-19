@@ -16,6 +16,7 @@ import 'server-only';
  * would only produce a worse experience.
  */
 
+import { OUTPUT_KINDS, type OutputKind } from '@/lib/generation/outputs';
 import {
   GENERATION_STAGES,
   type GenerationStage,
@@ -25,6 +26,34 @@ import {
 } from '@/lib/generation/providers/policy';
 import { generatorIdFromEnv, type GeneratorId } from '@/lib/generation/providers/registry';
 
+/**
+ * The output kinds this deployment can actually produce end to end.
+ *
+ * `video` has a worker: `runCloudMediaJob` renders scenes, assembles the MP4,
+ * uploads it and finalises the asset. `pptx` does not. `Agents/lesson-deck.ts`
+ * can build a real editable deck and is tested, but nothing claims a job for
+ * it, no worker runs it, and no code in `src/lib/cloud-lesson/` mentions a
+ * deck at all.
+ *
+ * Until this turn a teacher could ask for `pptx`: the request was admitted,
+ * a project was reserved, `planOutputs` returned `stages: ['plan','image']`
+ * and the route answered `202 Accepted`. Nothing then built anything, so the
+ * deck never arrived and nothing ever reported a failure. Accepting work that
+ * cannot finish is worse than refusing it, because the teacher has no way to
+ * tell waiting from broken.
+ *
+ * Adding the producer is the fix; naming the gap is what keeps the API honest
+ * until then. When a deck worker exists, add 'pptx' here and the route starts
+ * accepting it — this constant is the only thing standing in the way.
+ */
+export const PRODUCIBLE_OUTPUTS: readonly OutputKind[] = ['video'] as const;
+
+/** Output kinds the caller asked for that nothing in this deployment builds. */
+export function unsupportedOutputs(requested: readonly OutputKind[]): OutputKind[] {
+  return OUTPUT_KINDS.filter(
+    (kind) => requested.includes(kind) && !PRODUCIBLE_OUTPUTS.includes(kind));
+}
+
 export interface AdmissionResult {
   admitted: boolean;
   generator: GeneratorId;
@@ -32,6 +61,12 @@ export interface AdmissionResult {
   providers: Record<GenerationStage, { id: string; kind: string; model: string }>;
   /** Stages configured to use a paid API. Empty on a default deployment. */
   paidStages: GenerationStage[];
+  /**
+   * Requested output kinds nothing in this deployment can build. Non-empty
+   * means the request was refused for a reason retrying will not change, which
+   * a route should answer differently from a transient one.
+   */
+  unsupported: OutputKind[];
   reason: string | null;
 }
 
@@ -44,6 +79,7 @@ export interface AdmissionResult {
 export function admitGeneration(
   env: PolicyEnv = policyEnv(),
   generatorRaw: string | undefined = process.env.LESSON_GENERATOR,
+  requestedOutputs: readonly OutputKind[] = [],
 ): AdmissionResult {
   let generator: GeneratorId;
   try {
@@ -53,7 +89,7 @@ export function admitGeneration(
     // running on a different cost base is worse than refusing the request.
     return {
       admitted: false, generator: 'local',
-      providers: blankProviders(), paidStages: [],
+      providers: blankProviders(), paidStages: [], unsupported: [],
       reason: error instanceof Error ? error.message : 'LESSON_GENERATOR is invalid.',
     };
   }
@@ -71,12 +107,25 @@ export function admitGeneration(
   // the factories will refuse, so it is refused here with a readable reason.
   if (generator === 'cloud' && paidStages.length === 0) {
     return {
-      admitted: false, generator, providers, paidStages,
+      admitted: false, generator, providers, paidStages, unsupported: [],
       reason: 'LESSON_GENERATOR=cloud needs ALLOW_EXTERNAL_PROVIDERS=true and stages named in EXTERNAL_PROVIDERS.',
     };
   }
 
-  return { admitted: true, generator, providers, paidStages, reason: null };
+  // Checked last, so a caller sees the configuration problems first: those are
+  // fixable by the operator, whereas a missing producer is a missing feature.
+  const unsupported = unsupportedOutputs(requestedOutputs);
+  if (unsupported.length > 0) {
+    return {
+      admitted: false, generator, providers, paidStages, unsupported,
+      reason:
+        `This deployment cannot produce ${unsupported.join(' or ')}. `
+        + `It can produce ${PRODUCIBLE_OUTPUTS.join(', ')}. `
+        + `Retrying will not change this; the output has no worker yet.`,
+    };
+  }
+
+  return { admitted: true, generator, providers, paidStages, unsupported: [], reason: null };
 }
 
 function blankProviders(): AdmissionResult['providers'] {

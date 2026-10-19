@@ -20,7 +20,12 @@ import { join } from 'node:path';
 import { OpenRouterImageProvider } from '../Agents/image-providers/openrouter.ts';
 import { createHiggsfieldProvider } from '../src/lib/cloud-lesson/higgsfield.ts';
 import { geminiTransport } from '../src/lib/cloud-lesson/gemini.ts';
-import { admitGeneration } from '../src/lib/generation/admission.ts';
+import {
+  PRODUCIBLE_OUTPUTS,
+  admitGeneration,
+  unsupportedOutputs,
+} from '../src/lib/generation/admission.ts';
+import { OUTPUT_KINDS } from '../src/lib/generation/outputs.ts';
 import {
   ProviderBypassRefused,
   deriveTrusted,
@@ -221,6 +226,50 @@ check(localDefault.paidStages.length === 0, 'a default deployment must name no p
 check(localDefault.providers.motion.kind === 'deterministic',
   'motion must default to deterministic at the route gate too');
 console.log('admission: a default deployment admits local generation and no paid stage');
+
+// ── Outputs nothing can build ─────────────────────────────────────────────
+// A teacher could ask for a deck: the request was admitted, a project row was
+// reserved, planOutputs returned stages ['plan','image'] and the route answered
+// 202. No worker claims that work -- src/lib/cloud-lesson/ does not mention a
+// deck anywhere -- so the deck never arrived and no failure was ever reported.
+
+check(admitGeneration({}, undefined, ['video']).admitted,
+  'video has a worker and must still be admitted');
+check(admitGeneration({}, undefined, []).admitted,
+  'a caller that names no output must behave as before');
+
+const deckOnly = admitGeneration({}, undefined, ['pptx']);
+check(!deckOnly.admitted, 'a deck-only request must be refused while nothing builds a deck');
+check(deckOnly.unsupported.includes('pptx'), 'the refusal must name pptx as the unsupported kind');
+check(/retrying will not change/i.test(deckOnly.reason ?? ''),
+  `the reason must say a retry will not help: ${deckOnly.reason}`);
+check((deckOnly.reason ?? '').includes('video'),
+  'the reason must say what this deployment CAN produce');
+
+const both = admitGeneration({}, undefined, ['video', 'pptx']);
+check(!both.admitted, 'asking for video AND a deck must not be half-admitted');
+check(both.unsupported.length === 1 && both.unsupported[0] === 'pptx',
+  'only the unproducible kind should be named');
+console.log('admission: an output with no producer is refused rather than accepted and dropped');
+
+// The constant must not be flipped optimistically. Declaring a kind producible
+// is a claim that a worker exists, so the claim is checked against the workers.
+for (const kind of PRODUCIBLE_OUTPUTS) {
+  const workers = tsFilesUnder(join('src', 'lib', 'cloud-lesson'));
+  const mentions = workers.filter((f) => readFileSync(f, 'utf8').includes(kind));
+  check(mentions.length > 0,
+    `PRODUCIBLE_OUTPUTS claims "${kind}" can be built, but no module under `
+    + `src/lib/cloud-lesson/ mentions it. Wire the worker before declaring it.`);
+}
+console.log(`admission: all ${PRODUCIBLE_OUTPUTS.length} producible kind(s) have a module that mentions them`);
+
+// And the helper agrees with the constant for every kind the system knows.
+for (const kind of OUTPUT_KINDS) {
+  const refused = unsupportedOutputs([kind]).includes(kind);
+  check(refused === !PRODUCIBLE_OUTPUTS.includes(kind),
+    `unsupportedOutputs disagrees with PRODUCIBLE_OUTPUTS about ${kind}`);
+}
+console.log('admission: the capability helper and the constant agree on every known output kind');
 
 const cloudUnfunded = admitGeneration({}, 'cloud');
 check(!cloudUnfunded.admitted,
