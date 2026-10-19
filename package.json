@@ -49,7 +49,8 @@
     "bench:lesson": "python ops/cloud/benchmark.py",
     "deck:original": "tsx --require ./scripts/allow-server-only.cjs scripts/make-original-deck.mts",
     "test:image-provider": "tsx --require ./scripts/allow-server-only.cjs scripts/test-image-provider.mts",
-    "test:local-image": "tsx --require ./scripts/allow-server-only.cjs scripts/test-local-image-contract.mts"
+    "test:local-image": "tsx --require ./scripts/allow-server-only.cjs scripts/test-local-image-contract.mts",
+    "test:lesson-deck": "tsx --require ./scripts/allow-server-only.cjs scripts/test-lesson-deck.mts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.8.2",
