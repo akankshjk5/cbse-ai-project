@@ -7,9 +7,37 @@ requirements and why they exist; this is the order to do them in.
 every instruction as untested and expect to correct some of it. Record what you
 had to change.
 
-Target: one A6000, L40S or A40 (48 GB). 24 GB works if models are loaded and
-released per stage; 48 GB keeps them resident, which removes a model-swap from
-every scene.
+Target: one A6000, L40S or A40 (48 GB). **24 GB is the floor for the services
+as written, and nothing in this repository keeps models resident.**
+
+Each service parks on the CPU at import and borrows the GPU per request, then
+hands it back: `MODEL.to(device)` on the way in, `.to("cpu")` and
+`torch.cuda.empty_cache()` on the way out. That is unconditional -- there is no
+flag to hold a model on the card. So the GPU holds roughly one resident set at a
+time, and the floor is the largest single set rather than the sum:
+
+| Resident set | Weights |
+|---|---|
+| ComfyUI: Wan 2.2 TI2V-5B fp16 + UMT5-XXL fp8 | ~19.6 GiB |
+| ComfyUI: Z-Image 6B bf16 + Qwen3-4B text encoder | ~18.6 GiB |
+| Vision: Qwen2.5-VL-7B bf16 | ~14.2 GiB |
+| Planner: Qwen3-4B bf16 | ~7.5 GiB |
+| Speech: Indic Parler-TTS fp16 | ~1.6 GiB |
+
+Those are **parameter-count arithmetic, not measurements** -- bytes per parameter
+times parameters. Activations, KV cache and allocator fragmentation sit on top,
+which is why 24 GB is a floor and not a recommendation. `benchmark.json` replaces
+this table with measured numbers the first time it runs.
+
+What 48 GB actually buys is headroom -- Wan at higher resolution, and ComfyUI
+coexisting with a service without the driver evicting either.
+
+> **Superseded.** An earlier version of this runbook said 48 GB "keeps them
+> resident, which removes a model-swap from every scene." That was wrong in both
+> halves: no code path keeps them resident, and those sets total ~61 GiB, which
+> would not fit in 48 GB either. Kept here because someone who read the old
+> version and sized a rental on it deserves to find the correction rather than
+> silence.
 
 ---
 
@@ -43,11 +71,53 @@ python -c "import torch; print(torch.__version__, torch.cuda.is_available(), tor
 That last line must print `True`. If it prints `False`, stop: everything after
 this depends on it, and the benchmark will refuse rather than pretend.
 
-Then the pieces the harness itself needs:
+Then the Python packages. **The four services import more than the harness
+does; install only the harness's list and all four fail at import.**
 
 ```bash
 pip install pillow fonttools pynvml
 ```
+
+```bash
+pip install transformers
+```
+
+```bash
+pip install parler-tts scipy numpy
+```
+
+```bash
+pip install IndicTransToolkit
+```
+
+`parler-tts`, `scipy` and `numpy` are for `local_tts_service.py`;
+`IndicTransToolkit` is for `local_translation_service.py`; `transformers` is
+needed by all four. Read from the imports in `ops/runpod/local_*_service.py`
+rather than assumed:
+
+| Service | Third-party imports |
+|---|---|
+| `local_planner_service.py` | `torch`, `transformers` |
+| `local_vision_service.py` | `torch`, `transformers`, `PIL` |
+| `local_tts_service.py` | `torch`, `transformers`, `parler_tts`, `scipy`, `numpy` |
+| `local_translation_service.py` | `torch`, `transformers`, `IndicTransToolkit` |
+
+**The `transformers` version matters and is not yet pinned.** The sources mix two
+spellings of one argument: `local_vision_service.py:36` passes
+`dtype=torch.bfloat16`, while `local_planner_service.py:69` and
+`local_translation_service.py:43` pass `torch_dtype=`. `dtype=` is the newer
+name, `torch_dtype=` the older one, so the installed version must accept
+**both**.
+
+That working range has not been established on a real install, so this runbook
+does not invent one. Establish it at step 6 and record the result here:
+
+- `TypeError: ... unexpected keyword argument 'dtype'` from the vision service
+  means transformers is too old for it.
+- A deprecation warning about `torch_dtype` from the planner or the translation
+  service means they still work, but a later upgrade will break them.
+- All four up: pin that exact version here and in a requirements file, from
+  `pip freeze`.
 
 `pynvml` is optional but worth having: without it the device sampler falls back
 to spawning `nvidia-smi`, which cannot sample faster than about twice a second.
@@ -92,9 +162,64 @@ From [`Comfy-Org/z_image_turbo`](https://huggingface.co/Comfy-Org/z_image_turbo)
 and
 [`Comfy-Org/Wan_2.2_ComfyUI_Repackaged`](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged).
 
-Plus the three service models: Qwen3-4B, Qwen2.5-VL-7B, Indic Parler-TTS and
-IndicTrans2, at the paths `ops/runpod/.env.example` names
-(`LOCAL_PLANNER_MODEL_PATH`, `LOCAL_TTS_MODEL_PATH`, `LOCAL_VISION_MODEL_PATH`).
+### The service models: six more directories
+
+Separate from ComfyUI's six files, and **every one of these services passes
+`local_files_only=True`** -- nothing self-fetches, so a missing directory is a
+startup crash rather than a slow first request. Defaults read from the sources:
+
+| Variable | Default path | Used by |
+|---|---|---|
+| `LOCAL_PLANNER_MODEL_PATH` | `/workspace/lumina-local-ai/qwen3-4b` | planner |
+| `LOCAL_VISION_MODEL_PATH` | `/workspace/lumina-local-ai/qwen2.5-vl-7b` | vision |
+| `LOCAL_TTS_MODEL_PATH` | `/workspace/lumina-local-ai/indic-parler-tts` | TTS |
+| `LOCAL_TTS_DESCRIPTION_TOKENIZER_PATH` | `/workspace/lumina-local-ai/flan-t5-large-tokenizer` | TTS |
+| `LOCAL_ASR_MODEL_PATH` | `/workspace/lumina-local-ai/whisper-large-v3-turbo` | TTS listen-back |
+| `LOCAL_TRANSLATION_MODEL_PATH` | `/workspace/lumina-local-ai/indictrans2-en-indic-1b` | translation |
+
+`ops/runpod/.env.example` names only three of these
+(`LOCAL_PLANNER_MODEL_PATH`, `LOCAL_TTS_MODEL_PATH`, `LOCAL_ASR_MODEL_PATH`); the
+other three exist only as defaults in the service sources. Set all six
+explicitly rather than relying on that file being complete.
+
+**The TTS listen-back check fails open.** `local_tts_service.py:106` enables it
+only when a sentinel file is present inside the ASR directory. Without the file
+Whisper is never loaded and narration ships unverified -- the service still
+answers `200`. Check it:
+
+```bash
+test -f "$LOCAL_ASR_MODEL_PATH/.lumina-complete" && echo on || echo "listen-back DISABLED"
+```
+
+Create the sentinel only once the download is genuinely complete, which is the
+whole point of it:
+
+```bash
+touch /workspace/lumina-local-ai/whisper-large-v3-turbo/.lumina-complete
+```
+
+### Ports and the rest of the service settings
+
+Translation loads on the CPU and moves to the GPU per request, so it needs host
+RAM as well as VRAM.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `LOCAL_PLANNER_PORT` | `18080` | planner, `/structured` |
+| `LOCAL_TTS_PORT` | `18081` | speech, `/synthesize` |
+| `LOCAL_TRANSLATION_PORT` | `18082` | translation, `/translate` |
+| `LOCAL_VISION_PORT` | `18083` | vision, `/check` |
+| `LOCAL_TTS_SEED` | `1234` | fixes the voice, so every scene of a lesson sounds like one narrator |
+| `LOCAL_TTS_ATTEMPTS` | `3` | retakes allowed when listen-back disagrees with the script |
+| `LOCAL_TTS_MAX_ERROR` | `0.3` | word-error ceiling for accepting a take |
+
+The last three only do anything when listen-back is enabled -- without
+`.lumina-complete` the service takes one shot and ships it unchecked, whatever
+`LOCAL_TTS_ATTEMPTS` says. `LOCAL_TTS_MAX_ERROR` is a single global ceiling, and
+Whisper's accuracy is not uniform across these languages (the source notes it is
+weak at Malayalam), so a threshold strict enough for English will reject good
+Malayalam takes and one loose enough for Malayalam will accept poor English ones.
+Tune it per language only with measured word-error rates in hand.
 
 ### Licence gates, before you script the download
 
@@ -189,6 +314,10 @@ Neither is a before/after difference. Do not add them together.
 | Kannada narration silent | TTS answered but produced no speech | the harness fails the stage; check the model path |
 | Captions render as boxes | fonts missing | `DEPLOYMENT.md §5` |
 | Translation not native script | wrong language or a stub reply | the harness fails below 55% native script |
+| A service exits at startup, `ModuleNotFoundError` | service deps not installed | step 2 -- `transformers` is needed by all four |
+| Vision service: `unexpected keyword argument 'dtype'` | transformers too old for `local_vision_service.py:36` | upgrade; step 2 |
+| Narration passes but sounds wrong | listen-back silently off | `.lumina-complete` missing; step 5 |
+| A service crashes naming a model directory | nothing self-fetches (`local_files_only=True`) | pre-place all six; step 5 |
 
 A stage that fails is retried `--retries` times (default 2) and then recorded
 as failed. The run continues so one broken stage does not hide the others.
