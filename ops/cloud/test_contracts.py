@@ -592,5 +592,115 @@ class PreflightProbes(unittest.TestCase):
                           "a reported service must be one preflight knows about")
 
 
+class ModelManifest(unittest.TestCase):
+    """models.json must describe the models the code actually loads.
+
+    docs/model-licences.md is the prose audit. This is its machine-readable
+    companion, and the two drifting apart would be worse than having only one:
+    a report that cites a licence nobody checked reads as evidence.
+
+    Every revision is currently null. That is asserted rather than treated as
+    incomplete, because a plausible commit SHA written by hand would be
+    invented evidence, and `reproducible: false` is the honest state until a
+    download has happened.
+    """
+
+    def manifest(self):
+        import model_manifest  # noqa: PLC0415
+        return model_manifest
+
+    def data(self):
+        return self.manifest().load()
+
+    def test_every_comfyui_weight_is_in_the_manifest(self):
+        """REQUIRED_WEIGHTS is what the workflows load; the manifest must cover it."""
+        declared = {m.get("file") for m in self.data()["models"] if m.get("file")}
+        for files in lm.REQUIRED_WEIGHTS.values():
+            for subdir, name in files:
+                with self.subTest(weight=f"{subdir}/{name}"):
+                    self.assertIn(
+                        f"{subdir}/{name}", declared,
+                        "a weight the workflows load is absent from models.json, so "
+                        "no report can say which revision produced it")
+
+    def test_every_service_model_names_a_variable_a_service_reads(self):
+        """A manifest entry pointing at an unread variable would never resolve."""
+        read = set()
+        for filename in ("local_planner_service.py", "local_tts_service.py",
+                         "local_translation_service.py", "local_vision_service.py"):
+            source = (RUNPOD / filename).read_text(encoding="utf-8")
+            read |= set(re.findall(r'"([A-Z][A-Z_0-9]*_PATH)"', source))
+        for model in self.data()["models"]:
+            if model["kind"] != "service":
+                continue
+            with self.subTest(model=model["name"]):
+                self.assertIn(
+                    model["env"], read,
+                    f"{model['name']} points at {model['env']}, which no service reads")
+
+    def test_licences_agree_with_the_prose_audit(self):
+        """A licence in two places must be the same licence in both."""
+        audit = (HERE.parent.parent / "docs" / "model-licences.md").read_text(encoding="utf-8")
+        for model in self.data()["models"]:
+            with self.subTest(model=model["name"]):
+                self.assertIn(
+                    model["repo"], audit,
+                    f"{model['repo']} is in models.json but not in "
+                    f"docs/model-licences.md")
+
+    def test_nothing_claims_a_revision_it_has_not_observed(self):
+        facts = self.manifest().facts()
+        for model in facts["models"]:
+            with self.subTest(model=model["name"]):
+                if model["pinned_revision"] is None:
+                    self.assertFalse(model["pinned"])
+                    self.assertFalse(model["matches_pin"],
+                                     "an unpinned model cannot match a pin")
+        self.assertFalse(
+            facts["reproducible"],
+            "no model has been downloaded, so nothing may report reproducible. "
+            "If this fails because revisions were genuinely pinned after a real "
+            "download, update this test and say so in the commit.")
+
+    def test_the_unresolved_licence_and_the_gated_model_stay_flagged(self):
+        """The two facts a commercial decision turns on."""
+        facts = self.manifest().facts()
+        self.assertIn("image-vae", facts["licences_unresolved"],
+                      "ae.safetensors provenance is unresolved; it must stay flagged")
+        self.assertIn("translation", facts["gated_models"],
+                      "IndicTrans2 is gated; an unattended download fails")
+
+    def test_a_plain_directory_reports_no_revision_rather_than_guessing(self):
+        mm = self.manifest()
+        import tempfile  # noqa: PLC0415
+        plain = Path(tempfile.mkdtemp())
+        revision, why = mm.revision_from_path(plain)
+        self.assertIsNone(revision)
+        self.assertIn("no revision", why)
+        revision, why = mm.revision_from_path(plain / "absent")
+        self.assertIsNone(revision)
+        self.assertEqual(why, "not on disk")
+
+    def test_a_hub_snapshot_path_yields_its_commit(self):
+        mm = self.manifest()
+        import tempfile  # noqa: PLC0415
+        root = Path(tempfile.mkdtemp())
+        sha = "0" * 40
+        snapshot = root / "models--Qwen--Qwen3-4B" / "snapshots" / sha
+        snapshot.mkdir(parents=True)
+        revision, why = mm.revision_from_path(snapshot)
+        self.assertEqual(revision, sha)
+        self.assertIn("snapshot", why)
+
+    def test_the_benchmark_records_the_manifest(self):
+        source = (HERE / "benchmark.py").read_text(encoding="utf-8")
+        self.assertIn("models: dict = field(default_factory=dict)", source,
+                      "the report must carry a models section")
+        self.assertEqual(
+            source.count("report.models = "), 1,
+            "report.models must be assigned exactly once, before the readiness "
+            "gate, so a refusal still records which models were expected")
+
+
 if __name__ == "__main__":
     unittest.main()

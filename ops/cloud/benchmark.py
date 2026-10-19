@@ -36,6 +36,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 import bench_stages
 import gpu_probe
 import local_models as lm
+import model_manifest
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
@@ -139,6 +140,7 @@ class Benchmark:
     stages: list = field(default_factory=list)
     output: dict = field(default_factory=dict)
     budget: dict = field(default_factory=dict)
+    models: dict = field(default_factory=dict)
     complete: bool = False
     failures: list = field(default_factory=list)
 
@@ -401,6 +403,11 @@ def main() -> int:
         started_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         host={"node": platform.node()}, gpu={}, versions=versions(), weights={})
 
+    # Recorded before the readiness gate on purpose: a refusal is often about
+    # the models, and which revision, licence and gated status each one has is
+    # exactly what an operator needs at that moment.
+    report.models = model_manifest.facts(args.models_root)
+
     # Refuse before measuring. A partially-available host produces partial
     # numbers that read like whole ones.
     readiness = lm.readiness(models_root=args.models_root)
@@ -425,6 +432,13 @@ def main() -> int:
         print(f"REFUSED: {error}")
         return 1
     report.weights = weight_facts(args.models_root)
+    # weight_facts records size and mtime, which pins a build on a day;
+    # report.models (above) records the repository revision, without which two
+    # runs a month apart cannot be compared or reproduced.
+    if not report.models["reproducible"]:
+        print("  note: model revisions are not pinned, so this run is not "
+              "reproducible. See ops/cloud/model_manifest.py --pin")
+
 
     print(f"GPU: {report.gpu.get('name', 'unknown')} "
           f"({report.gpu.get('comfy_free_vram_mib', '?')} MiB free)")
