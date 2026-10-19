@@ -1,9 +1,28 @@
 # Making lesson media private without breaking playback
 
-**Status: proposal. Nothing in this document has been applied.** Bucket
-visibility is production configuration and flipping it is not reversible for
-URLs already handed out, so it is written down for a decision rather than
-done.
+**Status: the mechanism exists; the flip has not happened.** Bucket visibility
+is production configuration and flipping it is not reversible for URLs already
+handed out, so it is written down for a decision rather than done.
+
+Changed on 2026-10-19: `src/lib/storage/asset-url.ts` is the one place that
+turns a stored asset reference into a playable URL. `STORAGE_URL_MODE` defaults
+to `public`, so nothing behaves differently today, and `signed` switches the
+whole application to time-limited URLs without touching a worker or a player.
+
+`npm run test:asset-url` covers it against a fake storage client: paths are
+read out of the absolute public URLs that columns already hold, including
+percent-encoded Kannada filenames; the expiry is bounded at both ends
+(10 minutes to 7 days); an unknown mode is refused rather than defaulted; and
+signed mode has **no** path back to a permanent URL — a reference it cannot
+sign raises instead of falling back. That last one is mutation-tested, because
+a silent fallback would mean a deployment that believes it serves signed URLs
+quietly serving permanent ones.
+
+**The three buckets are still `public = true`.** Every object in them is still
+served to anyone with the URL, with no authentication and no expiry. Signing
+protects objects from the moment a bucket is private and not one moment
+earlier, and anyone already holding a public URL keeps the bytes until the
+object is moved or renamed.
 
 ## The finding
 
