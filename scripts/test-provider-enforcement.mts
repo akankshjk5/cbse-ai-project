@@ -26,6 +26,7 @@ import {
   unsupportedOutputs,
 } from '../src/lib/generation/admission.ts';
 import { OUTPUT_KINDS } from '../src/lib/generation/outputs.ts';
+import { ENV_VARS, WORKER_VARS } from '../src/lib/env-inventory.ts';
 import {
   ProviderBypassRefused,
   deriveTrusted,
@@ -212,6 +213,27 @@ check(scanned > 0, 'the scan matched no paid endpoint at all; the pattern is bro
 check(unguarded.length === 0,
   `these modules reach a paid AI endpoint without importing the guard: ${unguarded.join(', ')}`);
 console.log(`enforcement: ${scanned} production modules name a paid endpoint; all ${scanned} import the guard`);
+
+// ── Every variable the code reads is documented ───────────────────────────
+// scripts/doctor.mts reports configuration from this inventory, so a variable
+// missing from it is invisible to the one tool an operator runs to find out
+// what needs setting. The inventory was complete except for the two storage
+// variables added alongside this check.
+
+const documented = new Set([...ENV_VARS, ...WORKER_VARS].map((v) => v.name));
+const readInSource = new Set<string>();
+for (const file of [...tsFilesUnder('Agents'), ...tsFilesUnder(join('src', 'lib')),
+                    ...tsFilesUnder(join('src', 'app'))]) {
+  for (const match of readFileSync(file, 'utf8').matchAll(/process\.env\.([A-Z_][A-Z_0-9]*)/g)) {
+    readInSource.add(match[1]!);
+  }
+}
+check(readInSource.size > 20, `only ${readInSource.size} env reads found; the scan is broken`);
+const undocumented = [...readInSource].filter((name) => !documented.has(name)).sort();
+check(undocumented.length === 0,
+  `read in source but absent from src/lib/env-inventory.ts, so doctor.mts cannot report `
+  + `them: ${undocumented.join(', ')}`);
+console.log(`env: all ${readInSource.size} variables read in source are documented in the inventory`);
 
 check(typeof createHiggsfieldProvider === 'function', 'higgsfield factory must be the exported one');
 check(typeof geminiTransport === 'function', 'gemini transport must be the exported one');

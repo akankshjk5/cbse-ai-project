@@ -145,6 +145,19 @@ export const ENV_VARS: EnvVar[] = [
     note: 'Comma-separated stage names (plan, image, speech, motion) allowed to use a paid '
       + 'API. Both switches are required together; there is no silent fallback.',
   },
+  {
+    name: 'STORAGE_URL_MODE', scope: 'server', need: 'optional', secret: false,
+    note: '"public" (default) returns the stored URL unchanged, which is what every '
+      + 'deployment does today. "signed" serves time-limited URLs instead and refuses '
+      + 'any reference it cannot sign rather than falling back to a permanent one. '
+      + 'Setting it does NOT make an already-public bucket private.',
+  },
+  {
+    name: 'STORAGE_SIGNED_URL_TTL_SECONDS', scope: 'server', need: 'optional', secret: false,
+    note: 'Expiry for signed URLs, 600..604800 seconds, default 3600. Only read when '
+      + 'STORAGE_URL_MODE=signed. The floor exists because an expiry firing mid-playback '
+      + 'reads as a broken video rather than as a security control.',
+  },
 
   // ── Cloud lesson engine (Gemini). Reached only on an opted-in stage. ──────
   {
