@@ -1,3 +1,5 @@
+import { guardExternalFactory } from '@/lib/generation/providers/policy';
+
 import {
   ImageProviderError,
   fetchWithRetry,
@@ -28,8 +30,14 @@ interface OpenRouterImageReply {
 /**
  * Image models reached over OpenRouter's chat-completions endpoint with
  * `modalities: ['image', 'text']`. The picture comes back as a `data:` URL in
- * `message.images`. This is the pipeline's original, and still default,
- * provider — moved here unchanged so the others can sit beside it.
+ * `message.images`.
+ *
+ * This was the pipeline's original provider. It is no longer the default:
+ * `selectImageProvider` resolves `image` through the policy, which answers
+ * `local-image` unless both switches are set. Constructing this class is
+ * therefore an act of spending, and the constructor refuses unless the
+ * configuration actually asked for it — the same guard
+ * `createHiggsfieldProvider` and the Gemini transport use.
  */
 export class OpenRouterImageProvider implements ImageProvider {
   readonly id = 'openrouter';
@@ -37,6 +45,11 @@ export class OpenRouterImageProvider implements ImageProvider {
   readonly model: string;
 
   constructor(private readonly config: OpenRouterImageConfig) {
+    // Before the key is stored, not at the first request: a provider that was
+    // built but never called has already read a credential it was not
+    // authorised to use, and the failure should name the configuration rather
+    // than arrive later as a surprise charge.
+    guardExternalFactory('image');
     this.model = config.model;
   }
 

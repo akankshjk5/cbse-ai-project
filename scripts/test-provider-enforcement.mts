@@ -14,6 +14,10 @@
  *   npm run test:enforcement
  */
 
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { OpenRouterImageProvider } from '../Agents/image-providers/openrouter.ts';
 import { createHiggsfieldProvider } from '../src/lib/cloud-lesson/higgsfield.ts';
 import { geminiTransport } from '../src/lib/cloud-lesson/gemini.ts';
 import { admitGeneration } from '../src/lib/generation/admission.ts';
@@ -128,9 +132,81 @@ withEnv(undefined, undefined, () => {
 });
 console.log('enforcement: a refusal explains itself without echoing the credential');
 
+// ── The third paid provider ───────────────────────────────────────────────
+// OpenRouter was exported, constructible and unguarded while this suite said
+// "the only exported constructors of a paid client are the two guarded here".
+// That sentence was a comment, not a test, and it was wrong: `select.ts`
+// checked the policy before constructing, so the live path was safe, but any
+// new caller could have built one and spent money without passing a guard.
+
+withEnv(undefined, undefined, () => {
+  check(refuses(() => new OpenRouterImageProvider({ apiKey: 'pretend-key', model: 'm' })),
+    'an unconfigured deployment built an OpenRouter image client');
+});
+withEnv(undefined, 'image', () => {
+  check(refuses(() => new OpenRouterImageProvider({ apiKey: 'pretend-key', model: 'm' })),
+    'naming image without ALLOW_EXTERNAL_PROVIDERS built an OpenRouter client');
+});
+withEnv('true', undefined, () => {
+  check(refuses(() => new OpenRouterImageProvider({ apiKey: 'pretend-key', model: 'm' })),
+    'ALLOW_EXTERNAL_PROVIDERS alone built an OpenRouter client');
+});
+withEnv('true', 'motion', () => {
+  check(refuses(() => new OpenRouterImageProvider({ apiKey: 'pretend-key', model: 'm' })),
+    'enabling a DIFFERENT stage built an OpenRouter image client');
+});
+console.log('enforcement: the OpenRouter image provider refuses unless image is named and allowed');
+
+// And it builds when the configuration genuinely asks for it, so the guard is
+// a gate rather than a wall. A test that only proves refusal would still pass
+// if the constructor threw unconditionally.
+withEnv('true', 'image', () => {
+  let built: OpenRouterImageProvider | null = null;
+  built = new OpenRouterImageProvider({ apiKey: 'pretend-key', model: 'm' });
+  check(built instanceof OpenRouterImageProvider,
+    'with both switches set, the external image provider must be constructible');
+});
+console.log('enforcement: and it builds when both switches name the image stage');
+
 // ── No alternate construction path ────────────────────────────────────────
-// Asserted by inspection in the suite's own source scan below: the only
-// exported constructors of a paid client are the two guarded here.
+// The scan this file used to claim it performed.
+//
+// Any production module that names an external AI endpoint is a module where
+// spending becomes possible, so it must import the guard. `scripts/` is
+// excluded deliberately: `doctor.mts` prints endpoints as diagnostics and
+// `test-cloud-media.mts` is a test, and neither constructs a paid client.
+
+const PAID_HOST = /https:\/\/[^"'\s]*(openrouter\.ai|higgsfield\.ai|generativelanguage|fal\.run|api\.openai\.com)/;
+
+function tsFilesUnder(root: string): string[] {
+  const out: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir)) {
+      if (entry === 'node_modules' || entry.startsWith('.')) continue;
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) walk(full);
+      else if (/\.m?tsx?$/.test(entry)) out.push(full);
+    }
+  };
+  walk(root);
+  return out;
+}
+
+const production = [...tsFilesUnder('Agents'), ...tsFilesUnder(join('src', 'lib'))];
+check(production.length > 50, `the scan found only ${production.length} files; the walk is broken`);
+
+const unguarded: string[] = [];
+let scanned = 0;
+for (const file of production) {
+  const source = readFileSync(file, 'utf8');
+  if (!PAID_HOST.test(source)) continue;
+  scanned += 1;
+  if (!source.includes('guardExternalFactory')) unguarded.push(file);
+}
+check(scanned > 0, 'the scan matched no paid endpoint at all; the pattern is broken');
+check(unguarded.length === 0,
+  `these modules reach a paid AI endpoint without importing the guard: ${unguarded.join(', ')}`);
+console.log(`enforcement: ${scanned} production modules name a paid endpoint; all ${scanned} import the guard`);
 
 check(typeof createHiggsfieldProvider === 'function', 'higgsfield factory must be the exported one');
 check(typeof geminiTransport === 'function', 'gemini transport must be the exported one');

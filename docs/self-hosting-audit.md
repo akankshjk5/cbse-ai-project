@@ -17,18 +17,28 @@ https://openrouter.ai/api/v1/chat/completions   Agents/Agent.ts, Agents/images.t
 https://openrouter.ai/api/v1/key                scripts/doctor.mts (auth probe only)
 https://generativelanguage.googleapis.com       scripts/doctor.mts (auth probe only)
 https://api.higgsfield.ai                       src/lib/cloud-lesson/higgsfield.ts
-https://fal.run/                                Agents/image-providers/fal.ts
+https://fal.run/                                Agents/image-providers/fal.ts  [DELETED]
 ```
+
+> **Status, 2026-10-19.** Every "next step" at the foot of this audit is now
+> done, so the table below is a record of what was found, not of what is true
+> today. Changed since: `Agents/images.ts` goes through the `ImageProvider`
+> interface, `LocalZImageProvider` is the default, `fal.ts` is deleted, and
+> `OpenRouterImageProvider` now calls `guardExternalFactory('image')` in its
+> constructor like the other two paid providers. A source scan in
+> `npm run test:enforcement` now fails the build if a module under `Agents/` or
+> `src/lib/` names a paid endpoint without importing that guard.
 
 ## The dependencies
 
 | Dependency | Where | Class | Reachable by default? |
 |---|---|---|---|
 | OpenRouter — deck planning | `Agents/Agent.ts` | **was required** | **Was yes. Fixed in this commit** |
-| OpenRouter — deck images | `Agents/images.ts:41` | **required** | **Yes — unresolved** |
+| OpenRouter — deck images | `Agents/images.ts:41` | ~~**required**~~ resolved | No — `selectImageProvider` resolves `image` through the policy; local by default |
 | Higgsfield / Kling | `src/lib/cloud-lesson/higgsfield.ts` | optional | No — two switches, guarded at the factory |
 | Gemini | `src/lib/cloud-lesson/gemini.ts` | optional | No — same guard |
-| fal.ai | `Agents/image-providers/fal.ts` | **dead code** | No — nothing imports it |
+| OpenRouter — image class | `Agents/image-providers/openrouter.ts` | optional | No — guarded at the constructor since 2026-10-19 |
+| fal.ai | ~~`Agents/image-providers/fal.ts`~~ | **deleted** | n/a — zero importers, no env var, no test |
 | OpenRouter / Gemini auth probes | `scripts/doctor.mts` | development-only | No — `--auth` opt-in, metadata endpoints only |
 
 ### Dead code worth knowing about
@@ -96,8 +106,9 @@ deck configuration available today.
    Mechanical, no behaviour change, and it creates the seam.
 2. **Add a local provider implementing that interface** against ComfyUI, once
    a GPU exists to judge the output.
-3. **Delete `fal.ts`** or wire it. Dead code that reads like a feature is worse
-   than no code.
+3. ~~**Delete `fal.ts`** or wire it.~~ Deleted. It had zero importers, no
+   environment variable, no script and no test; the only references anywhere
+   were the two lines in this document.
 
 ## Verified
 
