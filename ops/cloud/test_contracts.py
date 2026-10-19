@@ -177,5 +177,68 @@ class WorkflowSlots(unittest.TestCase):
                     f"{name} declares {sorted(declared)}, benchmark supplies {sorted(provided)}")
 
 
+class TypeScriptPlannerClient(unittest.TestCase):
+    """Agents/local-planner.ts and the planner service must agree too.
+
+    The Python client is checked above. The TypeScript one is what
+    `Agents/lesson-deck.ts` calls, so it is the first thing that will reach a
+    real planner on the GPU server — and nothing compared the two until now.
+    """
+
+    def ts_source(self) -> str:
+        return (HERE.parent.parent / "Agents" / "local-planner.ts").read_text(encoding="utf-8")
+
+    def body_keys(self) -> set[str]:
+        """The JSON keys the client actually sends.
+
+        Taken by POSITION, not by substring. `assertIn("jsonSchema", body)`
+        passes happily on `schema: jsonSchema` — the key renamed, the value
+        untouched — which is exactly the drift this class exists to catch, and
+        a mutation test caught the first version failing to catch it.
+        """
+        ts = self.ts_source()
+        # The body literal only: `signal` is a sibling of `body` in the fetch
+        # init and is not part of the payload.
+        body = ts.split("body: JSON.stringify({", 1)[1].split("}),", 1)[0]
+        keys = set()
+        for line in body.splitlines():
+            match = re.match(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*[:,]", line)
+            if match:
+                keys.add(match.group(1))
+        return keys
+
+    def test_request_keys_match(self):
+        service = payload_keys(RUNPOD / "local_planner_service.py")
+        sent = self.body_keys()
+        for key in ("systemPrompt", "userPrompt", "jsonSchema", "maxNewTokens"):
+            self.assertIn(key, sent, f"local-planner.ts stopped sending {key}")
+            self.assertIn(key, service, f"the service stopped reading {key}")
+        self.assertEqual(
+            sent, {"systemPrompt", "userPrompt", "jsonSchema", "maxNewTokens"},
+            f"local-planner.ts sends unexpected keys: {sorted(sent)}")
+
+    def test_response_keys_match(self):
+        ts = self.ts_source()
+        service = (RUNPOD / "local_planner_service.py").read_text(encoding="utf-8")
+        for key in ("output", "model"):
+            self.assertIn(f"envelope.{key}", ts, f"local-planner.ts stopped reading {key}")
+            self.assertIn(f'"{key}"', service, f"the service stopped writing {key}")
+
+    def test_token_bounds_agree(self):
+        """Both sides clamp to 512..5000. A client that asked for more would
+        have its request silently shortened, and a plan truncated mid-JSON
+        fails schema validation with no hint of why."""
+        ts = self.ts_source()
+        service = (RUNPOD / "local_planner_service.py").read_text(encoding="utf-8")
+        self.assertIn("512", ts)
+        self.assertIn("5000", ts.replace("5_000", "5000"))
+        self.assertIn("512", service)
+        self.assertIn("5000", service.replace("5_000", "5000"))
+
+    def test_path_is_structured(self):
+        self.assertIn("/structured", self.ts_source(),
+                      "local-planner.ts must post to /structured")
+
+
 if __name__ == "__main__":
     unittest.main()
