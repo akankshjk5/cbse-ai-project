@@ -3,6 +3,7 @@ import 'server-only';
 import sharp from 'sharp';
 
 import { serverEnv } from '@/lib/env';
+import { selectImageProvider } from './image-providers/select';
 import { buildImagePrompt, styleEnvelope, type ImageSubject } from './image-prompt';
 import { harmonise } from './palette';
 import { recordAgentRun } from './telemetry';
@@ -38,7 +39,8 @@ import { AgentError, type StyleSpec } from './types';
  *    ./palette.
  */
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+/** Where the shipped ComfyUI graphs live, for the local provider. */
+const WORKFLOW_DIR = 'ops/runpod/workflows/api';
 
 /** Named slide-image sizes, in pixels. 2x the 96dpi slide canvas. */
 export const IMAGE_SIZES = {
@@ -131,72 +133,14 @@ function targetSize(requested: ImageSize, native: ImageSize): ImageSize {
   };
 }
 
-/** Rate limits and overload are routine on image models; a 400 never is. */
-const RETRY_DELAYS_MS = [1500, 5000];
-
-function isTransient(status: number): boolean {
-  return status === 408 || status === 409 || status === 429 || status >= 500;
-}
-
-/**
- * POSTs the generation request, retrying transient provider failures.
- *
- * A deck asks for several images back to back, which is exactly the shape that
- * trips a per-minute limit — and losing an illustration to a 429 that would
- * have succeeded two seconds later is a waste of a build.
+/*
+ * The OpenRouter transport that used to live here — retry policy, the
+ * chat-completions payload, and pulling a `data:` URL out of the reply —
+ * moved to Agents/image-providers/openrouter.ts. It was the only reason
+ * this file knew a vendor's URL, and keeping a second copy beside the
+ * provider would have been one to drift.
  */
-async function postWithRetry(body: Record<string, unknown>): Promise<Response> {
-  for (let attempt = 0; ; attempt++) {
-    const response = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${serverEnv.openRouterApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
 
-    if (response.ok || attempt >= RETRY_DELAYS_MS.length || !isTransient(response.status)) {
-      return response;
-    }
-
-    console.warn(
-      `[images] ${body.model} returned ${response.status} — retrying in ${RETRY_DELAYS_MS[attempt]}ms`,
-    );
-    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
-  }
-}
-
-interface OpenRouterImageReply {
-  choices?: Array<{
-    message?: {
-      images?: Array<{ image_url?: { url?: string } }>;
-    };
-  }>;
-  usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
-  error?: { message?: string };
-}
-
-function extractDataUrl(reply: OpenRouterImageReply): string {
-  const url = reply.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-  if (!url?.startsWith('data:')) {
-    throw new AgentError(
-      reply.error?.message
-        ? `Image model returned an error: ${reply.error.message}`
-        : 'Image model returned no image. Check that OPENROUTER_IMAGE_MODEL is an image-output model.',
-      'IMAGE_GENERATION_EMPTY',
-      'image-generator',
-    );
-  }
-  return url;
-}
-
-/**
- * Generates one illustration and returns it at exactly the requested size.
- *
- * Throws rather than returning a placeholder: a silently-missing image becomes
- * an empty box three stages later, in the .pptx, where nobody is looking.
- */
 export async function generateImage(input: GenerateImageInput): Promise<GenerateImageOutput> {
   const { prompt, styleSpec, objects, context, role } = input;
   const size = resolveSize(input.size);
@@ -227,52 +171,69 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
         'No text, no lettering, no watermarks, no borders — type is added by the deck itself.',
       ].join('\n');
 
+  // The two dialects are built together and the provider takes the one it
+  // speaks. Z-Image reads a concise descriptive line; sending it the long
+  // structured brief written for a chat model produces a picture of the brief.
+  const captionPrompt = [
+    prompt,
+    objects?.length ? `Include: ${objects.join(', ')}.` : '',
+    context ? `Context: ${context}.` : '',
+    'No text, letters, numbers or labels anywhere in the image.',
+  ].filter(Boolean).join(' ');
+
   const startedAt = Date.now();
-  const response = await postWithRetry({
-    model,
-    modalities: ['image', 'text'],
-    messages: [{ role: 'user', content: fullPrompt }],
+  const selected = await selectImageProvider({
+    comfyUrl: serverEnv.localVideoComfyUrl,
+    workflowDir: WORKFLOW_DIR,
+    // Read only if the policy actually selects the paid provider, so a
+    // self-hosted deployment with no key can still reach this line.
+    openRouterApiKey: () => serverEnv.openRouterApiKey,
+    openRouterModel: model,
   });
 
-  if (!response.ok) {
-    const detail = await response.text();
+  let produced;
+  try {
+    produced = await selected.provider.generate({
+      prompts: { spec: fullPrompt, caption: captionPrompt },
+      width: size.width,
+      height: size.height,
+      aspectRatio: ratioLabel(size),
+    });
+  } catch (error) {
     recordAgentRun({
       agent: 'tool:generate_image',
       attempt: 0,
       status: 'failed',
-      model,
-      input: { prompt: fullPrompt, size },
+      model: selected.provider.model,
+      input: { prompt: fullPrompt, size, provider: selected.provider.id },
       latencyMs: Date.now() - startedAt,
-      error: `HTTP ${response.status}: ${detail}`,
+      error: error instanceof Error ? error.message : String(error),
     });
+    // Rethrown, never substituted. A deployment that chose local generation
+    // and cannot reach its GPU must not quietly become a charge somewhere else.
     throw new AgentError(
-      `Image generation failed (${response.status}): ${detail}`,
+      `Image generation failed on ${selected.provider.id}: `
+      + `${error instanceof Error ? error.message : String(error)}`,
       'IMAGE_GENERATION_FAILED',
       'image-generator',
     );
   }
 
-  const reply = (await response.json()) as OpenRouterImageReply;
-
   recordAgentRun({
     agent: 'tool:generate_image',
     attempt: 0,
-    status: reply.choices?.[0]?.message?.images?.length ? 'succeeded' : 'failed',
-    model,
-    input: { prompt: fullPrompt, size },
-    // The image itself is megabytes of base64 — record what it was, not the file.
-    output: { size, mimeType: 'image/png' },
-    promptTokens: reply.usage?.prompt_tokens,
-    completionTokens: reply.usage?.completion_tokens,
-    costUsd: reply.usage?.cost,
+    status: 'succeeded',
+    model: produced.model,
+    input: { prompt: fullPrompt, size, provider: produced.provider, reason: selected.reason },
+    // The image itself is megabytes — record what it was, not the file.
+    output: { size, mimeType: produced.mimeType },
+    promptTokens: produced.usage.promptTokens,
+    completionTokens: produced.usage.completionTokens,
+    costUsd: produced.usage.costUsd,
     latencyMs: Date.now() - startedAt,
-    error: reply.error?.message,
   });
 
-  const dataUrl = extractDataUrl(reply);
-  const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
-
-  const source = sharp(Buffer.from(base64, 'base64'));
+  const source = sharp(produced.data);
   const { width: nativeWidth = 0, height: nativeHeight = 0 } = await source.metadata();
 
   // The model's aspect ratio is advisory; the slide's is not. Its resolution,
@@ -293,5 +254,6 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
     ? await harmonise(resized, styleSpec, serverEnv.imagePaletteStrength)
     : resized;
 
-  return { data, mimeType: 'image/png', width: target.width, height: target.height, model };
+  return { data, mimeType: 'image/png', width: target.width, height: target.height,
+           model: produced.model };
 }
