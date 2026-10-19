@@ -66,6 +66,69 @@ class StageResult:
     extra: dict = field(default_factory=dict)
 
 
+class BudgetExhausted(RuntimeError):
+    """The run hit its time or money limit. Recorded, never hidden."""
+
+
+class Budget:
+    """A wall-clock and money ceiling, checked between stages.
+
+    Checked BETWEEN stages rather than inside them: killing Wan mid-sample
+    leaves ComfyUI holding VRAM and a part-written file, and the next stage
+    then fails for a reason that has nothing to do with the budget. A stage
+    that overruns on its own is bounded by its own timeout.
+
+    The cost here is `estimated`, never `measured`: it is elapsed time times a
+    rate the operator supplied, not a figure read from a bill. The codebase
+    uses that distinction everywhere and this is no exception.
+    """
+
+    def __init__(self, max_minutes: float | None, usd_per_hour: float | None,
+                 max_usd: float | None) -> None:
+        self.max_minutes = max_minutes
+        self.usd_per_hour = usd_per_hour
+        self.max_usd = max_usd
+        self.started = time.monotonic()
+        self.stopped_because: str | None = None
+
+    @property
+    def elapsed_seconds(self) -> float:
+        return time.monotonic() - self.started
+
+    @property
+    def estimated_usd(self) -> float | None:
+        if self.usd_per_hour is None:
+            return None
+        return round(self.elapsed_seconds / 3600.0 * self.usd_per_hour, 4)
+
+    def check(self) -> None:
+        """Raise if the next stage must not start."""
+        if self.max_minutes is not None and self.elapsed_seconds > self.max_minutes * 60:
+            self.stopped_because = (
+                f"wall-clock budget of {self.max_minutes:g} min exhausted "
+                f"after {self.elapsed_seconds / 60:.1f} min")
+            raise BudgetExhausted(self.stopped_because)
+        spent = self.estimated_usd
+        if self.max_usd is not None and spent is not None and spent > self.max_usd:
+            self.stopped_because = (
+                f"estimated spend ${spent:.2f} exceeded the ${self.max_usd:.2f} ceiling "
+                f"at ${self.usd_per_hour:.2f}/hour")
+            raise BudgetExhausted(self.stopped_because)
+
+    def facts(self) -> dict:
+        return {
+            "elapsed_seconds": round(self.elapsed_seconds, 2),
+            "max_minutes": self.max_minutes,
+            "usd_per_hour": self.usd_per_hour,
+            "max_usd": self.max_usd,
+            "estimated_cost_usd": self.estimated_usd,
+            # Not from a bill. Time times a rate the operator typed.
+            "cost_basis": "estimated" if self.usd_per_hour is not None else "unknown",
+            "aborted": self.stopped_because is not None,
+            "abort_reason": self.stopped_because,
+        }
+
+
 @dataclass
 class Benchmark:
     started_at: str
@@ -75,6 +138,7 @@ class Benchmark:
     weights: dict
     stages: list = field(default_factory=list)
     output: dict = field(default_factory=dict)
+    budget: dict = field(default_factory=dict)
     complete: bool = False
     failures: list = field(default_factory=list)
 
@@ -321,6 +385,15 @@ def main() -> int:
     parser.add_argument("--wan-steps", type=int, default=20)
     parser.add_argument("--interval", type=float, default=0.25,
                         help="GPU sampling interval in seconds; recorded in the report")
+    parser.add_argument("--max-minutes", type=float, default=45.0,
+                        help="abort between stages once this much wall clock has passed "
+                             "(default 45; pass 0 for no limit)")
+    parser.add_argument("--usd-per-hour", type=float, default=None,
+                        help="your instance's hourly rate, to record an ESTIMATED cost. "
+                             "Not read from a bill, so the report marks it estimated")
+    parser.add_argument("--max-usd", type=float, default=None,
+                        help="abort between stages once the estimated spend passes this. "
+                             "Needs --usd-per-hour to do anything")
     args = parser.parse_args()
 
     comfy = lm.DEFAULT_ENDPOINTS["comfy"]
@@ -375,7 +448,29 @@ def main() -> int:
     overall_started = time.monotonic()
     # Order matters: the plan feeds the keyframe, the keyframe feeds vision and
     # motion, and the translation feeds the non-English narration.
-    for stage_name in ("plan", "translate", "keyframe", "vision", "motion", "tts"):
+    budget = Budget(
+        max_minutes=args.max_minutes if args.max_minutes and args.max_minutes > 0 else None,
+        usd_per_hour=args.usd_per_hour, max_usd=args.max_usd)
+    if args.max_usd is not None and args.usd_per_hour is None:
+        print("  note: --max-usd needs --usd-per-hour to mean anything; "
+              "no money ceiling is in force.\n")
+
+    stage_names = ("plan", "translate", "keyframe", "vision", "motion", "tts")
+    for index, stage_name in enumerate(stage_names):
+        try:
+            budget.check()
+        except BudgetExhausted as error:
+            # The stages that did not start are recorded as NOT_EXECUTED with
+            # the reason, so the report cannot be read as "these stages failed".
+            for skipped in stage_names[index:]:
+                report.stages.append(asdict(StageResult(
+                    stage=skipped, ok=False, measured=False,
+                    detail=f"NOT_EXECUTED: {error}")))
+            report.failures.append(f"aborted: {error}")
+            print(f"\n  ABORTED  {error}")
+            print(f"  {len(stage_names) - index} stage(s) did not start and carry no figures.")
+            break
+
         runner = bench_stages.STAGES.get(stage_name)
         if runner is None:
             result = StageResult(stage=stage_name, ok=False, measured=False,
@@ -390,6 +485,7 @@ def main() -> int:
         vram = f"{seen} MiB seen" if seen is not None else "vram n/a"
         print(f"  {mark} {stage_name:10s} {secs:>9s}  {vram:>16s}  {result.detail[:46]}")
 
+    report.budget = budget.facts()
     report.output["end_to_end_seconds"] = round(time.monotonic() - overall_started, 3)
     report.output["artifacts"] = str(out_dir)
     report.output["languages"] = languages

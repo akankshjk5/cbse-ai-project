@@ -19,6 +19,7 @@ from __future__ import annotations
 import ast
 import re
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -405,6 +406,190 @@ class RunbookMatchesServices(unittest.TestCase):
                     var, runbook,
                     f"{var} is not in .env.example, so the runbook is the only "
                     f"place an operator could learn it exists")
+
+
+class BenchmarkBudget(unittest.TestCase):
+    """The ceilings that stop a metered box running unattended.
+
+    The benchmark had neither a time nor a money limit. A stage that hangs --
+    Wan on an undersized card being the obvious candidate -- ran until someone
+    noticed, and the only record of the cost was the invoice. A benchmark whose
+    purpose is to measure cost should not be the thing that produces an
+    unmeasured one.
+
+    The cost is `estimated` and never `measured`: elapsed time times a rate the
+    operator typed. Asserted here because the difference is the whole point of
+    the cost_basis vocabulary used across this codebase.
+    """
+
+    def budget(self, *args, **kwargs):
+        import benchmark  # noqa: PLC0415 — imported late; it pulls in optional deps
+        return benchmark.Budget(*args, **kwargs)
+
+    def exhausted(self):
+        import benchmark  # noqa: PLC0415
+        return benchmark.BudgetExhausted
+
+    def test_no_limits_never_aborts_and_reports_unknown_cost(self):
+        b = self.budget(None, None, None)
+        b.check()  # must not raise
+        facts = b.facts()
+        self.assertFalse(facts["aborted"])
+        self.assertIsNone(facts["estimated_cost_usd"])
+        self.assertEqual(facts["cost_basis"], "unknown",
+                         "with no rate supplied the cost is unknown, not zero")
+
+    def test_wall_clock_ceiling_aborts_with_a_reason(self):
+        b = self.budget(0.0001, None, None)
+        time.sleep(0.02)
+        with self.assertRaises(self.exhausted()) as caught:
+            b.check()
+        self.assertIn("wall-clock budget", str(caught.exception))
+        self.assertTrue(b.facts()["aborted"])
+        self.assertIn("wall-clock", b.facts()["abort_reason"])
+
+    def test_money_ceiling_aborts_with_a_reason(self):
+        # $3600/hour makes a second cost a dollar, so the ceiling is reachable
+        # without the test sleeping for any length of time.
+        b = self.budget(None, 3600.0, 0.5)
+        time.sleep(0.6)
+        with self.assertRaises(self.exhausted()) as caught:
+            b.check()
+        self.assertIn("exceeded", str(caught.exception))
+        self.assertIn("ceiling", b.facts()["abort_reason"])
+
+    def test_cost_is_estimated_never_measured(self):
+        b = self.budget(None, 0.33, None)
+        time.sleep(0.02)
+        facts = b.facts()
+        self.assertEqual(facts["cost_basis"], "estimated")
+        self.assertNotEqual(facts["cost_basis"], "measured",
+                            "a rate times elapsed time is not a measurement")
+        self.assertEqual(facts["usd_per_hour"], 0.33)
+
+    def test_a_rate_without_a_ceiling_records_but_does_not_abort(self):
+        b = self.budget(None, 0.33, None)
+        time.sleep(0.02)
+        b.check()  # must not raise
+        self.assertFalse(b.facts()["aborted"])
+        self.assertIsNotNone(b.facts()["estimated_cost_usd"])
+
+    def test_the_report_carries_a_budget_field(self):
+        """A report with no budget section would hide an abort."""
+        source = (HERE / "benchmark.py").read_text(encoding="utf-8")
+        self.assertIn("budget: dict = field(default_factory=dict)", source,
+                      "Benchmark must carry a budget field")
+        self.assertIn("report.budget = budget.facts()", source,
+                      "the budget must be written onto the report")
+
+    def test_skipped_stages_are_not_executed_rather_than_failed(self):
+        """A stage that never started must not read as a stage that failed.
+
+        Checked in the source because exercising it needs a ready host: the
+        benchmark refuses before measuring when readiness fails, so the
+        between-stages abort path cannot run on a box with no GPU.
+        """
+        source = (HERE / "benchmark.py").read_text(encoding="utf-8")
+        self.assertIn("NOT_EXECUTED:", source,
+                      "stages skipped by the budget must be marked NOT_EXECUTED")
+        self.assertIn("for skipped in stage_names[index:]", source,
+                      "the remaining stages must be recorded, not dropped")
+
+    def test_the_benchmark_starts_nothing_it_has_to_pay_for(self):
+        """It requires an already-running host; it must not create one.
+
+        Checked by IMPORTS, not by substring. The first version of this test
+        searched the source text for "runpod" and failed on
+        `ops/runpod/workflows/api` -- a directory path, not a provisioning
+        call. A test that cannot tell those apart would have to be silenced,
+        and a silenced test guards nothing.
+        """
+        tree = ast.parse((HERE / "benchmark.py").read_text(encoding="utf-8"))
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported |= {a.name.split(".")[0] for a in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                imported.add(node.module.split(".")[0])
+        for sdk in ("boto3", "runpod", "googleapiclient", "azure", "paramiko", "libcloud"):
+            self.assertNotIn(sdk, imported,
+                             f"the benchmark imports {sdk}; it must not be able to "
+                             f"provision or bill anything")
+        # And no shelling out to a provisioning CLI.
+        source = (HERE / "benchmark.py").read_text(encoding="utf-8")
+        for command in ("terraform", "docker run", "runpodctl", "aws ec2", "gcloud compute"):
+            self.assertNotIn(command, source,
+                             f"the benchmark shells out to {command!r}")
+
+
+class PreflightProbes(unittest.TestCase):
+    """The three gates added to check_server.py.
+
+    Each existed as a paragraph in RUNBOOK-48GB.md and as a defect that had
+    already happened: following the runbook installed none of the services'
+    dependencies, and all four died at import.
+    """
+
+    def server(self):
+        import check_server  # noqa: PLC0415
+        return check_server
+
+    def test_service_dependencies_match_the_sources(self):
+        """The hardcoded list must be what the services actually import."""
+        cs = self.server()
+        for filename, declared in cs.SERVICE_DEPS.items():
+            with self.subTest(service=filename):
+                source = RUNPOD / filename
+                self.assertTrue(source.is_file(), f"{filename} is missing")
+                tree = ast.parse(source.read_text(encoding="utf-8"))
+                imported = set()
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Import):
+                        imported |= {a.name.split(".")[0] for a in node.names}
+                    elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                        imported.add(node.module.split(".")[0])
+                third_party = {m for m in imported
+                               if m not in sys.stdlib_module_names and m != "torch"}
+                self.assertEqual(
+                    set(declared), third_party,
+                    f"{filename} imports {sorted(third_party)} but preflight checks "
+                    f"{sorted(declared)}")
+
+    def test_disk_probe_reports_a_floor_and_a_verdict(self):
+        cs = self.server()
+        facts = cs.disk_facts(HERE)
+        self.assertTrue(facts["checked"])
+        for key in ("free_gib", "total_gib", "floor_gib", "ok"):
+            self.assertIn(key, facts)
+        self.assertGreater(facts["floor_gib"], 0, "a floor of zero gates nothing")
+        self.assertEqual(facts["ok"], facts["free_gib"] >= facts["floor_gib"])
+
+    def test_disk_probe_walks_up_to_an_existing_parent(self):
+        """--models-root may name a directory that does not exist yet."""
+        cs = self.server()
+        facts = cs.disk_facts(HERE / "no-such-dir" / "deeper" / "still-not-there")
+        self.assertTrue(facts["checked"],
+                        "a missing path must resolve to its nearest real parent")
+
+    def test_torch_probe_never_claims_cuda_it_did_not_see(self):
+        cs = self.server()
+        facts = cs.torch_facts()
+        self.assertIn("installed", facts)
+        self.assertIn("cuda_available", facts)
+        if not facts["installed"]:
+            self.assertFalse(facts["cuda_available"],
+                             "CUDA cannot be available when torch is absent")
+            self.assertIn("error", facts, "an absent torch must say so")
+
+    def test_dependency_probe_names_the_service_that_needs_each_module(self):
+        cs = self.server()
+        facts = cs.dependency_facts()
+        self.assertIn("ok", facts)
+        self.assertIn("missing_by_service", facts)
+        self.assertEqual(facts["ok"], not facts["missing_by_service"])
+        for service in facts["missing_by_service"]:
+            self.assertIn(service, cs.SERVICE_DEPS,
+                          "a reported service must be one preflight knows about")
 
 
 if __name__ == "__main__":
