@@ -180,4 +180,138 @@ begin
   raise notice 'ok  a cancelled lesson does not get a deck';
 end $$;
 
+-- 9. A lesson that has already succeeded survives its deck failing. This held
+--    before 20261020090000 only because private.fail_cloud_lesson ignores a
+--    project that is not mid-generation -- luck rather than design, so it is
+--    asserted rather than assumed.
+select public.test_become('teacher_deck_p9');
+do $$
+declare p uuid; j uuid; st text;
+begin
+  select id into p from public.reserve_cloud_lesson(
+    9::smallint, 'Science', 'Photosynthesis', 'en-IN', 60::smallint, 'illustrated');
+  update public.cloud_lesson_projects set requested_outputs = '{video,pptx}' where id = p;
+  j := public.enqueue_cloud_lesson_deck(p);
+  update public.cloud_lesson_projects set status = 'succeeded' where id = p;
+
+  update public.cloud_lesson_jobs
+    set status = 'processing', worker_id = 'w9', attempts = 2, max_attempts = 2
+    where id = j;
+  perform public.fail_cloud_lesson_job(j, 'w9', 'deck_failed', 'planner unreachable', 30, 0);
+
+  select status into st from public.cloud_lesson_projects where id = p;
+  if st <> 'succeeded' then
+    raise exception 'a succeeded lesson became % because its deck failed', st;
+  end if;
+  raise notice 'ok  a succeeded lesson survives its deck failing';
+end $$;
+
+-- 10. The one this migration exists for. A deck that gives up while the video
+--     is still rendering must not take the video with it. Before the fix this
+--     produced: lesson status = failed, assemble jobs cancelled = 1.
+select public.test_become('teacher_deck_p10');
+do $$
+declare p uuid; j uuid; st text; n_cancelled int; n_failed int;
+begin
+  select id into p from public.reserve_cloud_lesson(
+    9::smallint, 'Science', 'Respiration', 'en-IN', 60::smallint, 'illustrated');
+  update public.cloud_lesson_projects set requested_outputs = '{video,pptx}' where id = p;
+  j := public.enqueue_cloud_lesson_deck(p);
+  update public.cloud_lesson_projects set status = 'generating_videos' where id = p;
+  insert into public.cloud_lesson_jobs (owner_id, project_id, kind, max_attempts)
+    values ('teacher_deck_p10', p, 'assemble', 2);
+
+  update public.cloud_lesson_jobs
+    set status = 'processing', worker_id = 'w10', attempts = 2, max_attempts = 2
+    where id = j;
+  perform public.fail_cloud_lesson_job(j, 'w10', 'deck_failed', 'planner unreachable', 30, 0);
+
+  select status into st from public.cloud_lesson_projects where id = p;
+  if st = 'failed' then
+    raise exception 'a failed deck marked the whole lesson failed while the video was rendering';
+  end if;
+  select count(*) into n_cancelled from public.cloud_lesson_jobs
+    where project_id = p and kind = 'assemble' and status = 'cancelled';
+  if n_cancelled > 0 then
+    raise exception 'a failed deck cancelled % queued assemble job(s)', n_cancelled;
+  end if;
+  -- And the deck's own failure is still recorded, not swallowed.
+  select count(*) into n_failed from public.cloud_lesson_jobs
+    where id = j and status = 'failed' and error_code = 'deck_failed';
+  if n_failed <> 1 then
+    raise exception 'the deck failure was not recorded on its own job row';
+  end if;
+  raise notice 'ok  a failed deck leaves the video alone and records its own failure';
+end $$;
+
+-- 11. Retries. A deck job with attempts remaining goes back to 'queued' with a
+--     backoff, and is not immediately claimable again -- otherwise a planner
+--     that is down becomes a tight loop against it.
+select public.test_become('teacher_deck_p11');
+do $$
+declare p uuid; j uuid; st text; avail timestamptz; claimed uuid;
+begin
+  update public.cloud_lesson_jobs set status = 'succeeded'
+    where kind = 'deck' and status = 'queued';
+  select id into p from public.reserve_cloud_lesson(
+    9::smallint, 'Science', 'Osmosis', 'en-IN', 60::smallint, 'illustrated');
+  update public.cloud_lesson_projects set requested_outputs = '{video,pptx}' where id = p;
+  j := public.enqueue_cloud_lesson_deck(p);
+
+  update public.cloud_lesson_jobs
+    set status = 'processing', worker_id = 'w11', attempts = 1, max_attempts = 2
+    where id = j;
+  perform public.fail_cloud_lesson_job(j, 'w11', 'deck_failed', 'planner timed out', 45, 0);
+
+  select status, available_at into st, avail from public.cloud_lesson_jobs where id = j;
+  if st <> 'queued' then
+    raise exception 'a deck job with a retry left became % instead of queued', st;
+  end if;
+  if avail <= now() then
+    raise exception 'a requeued deck job was immediately claimable; the backoff was not applied';
+  end if;
+  select id into claimed from public.claim_cloud_lesson_job('w11b', array['deck']);
+  if claimed is not null then
+    raise exception 'a backed-off deck job was claimed before its available_at';
+  end if;
+  raise notice 'ok  a deck job with a retry left is requeued behind a backoff';
+end $$;
+
+-- 12. A worker that crashed. Its lease expires, the queue recovers the job,
+--     and recovering a deck must not fail the lesson either -- that is the
+--     path 20261019140000 guarded, kept honest here.
+select public.test_become('teacher_deck_p12');
+do $$
+declare p uuid; j uuid; st text; jst text;
+begin
+  update public.cloud_lesson_jobs set status = 'succeeded'
+    where kind = 'deck' and status = 'queued';
+  select id into p from public.reserve_cloud_lesson(
+    9::smallint, 'Science', 'Diffusion', 'en-IN', 60::smallint, 'illustrated');
+  update public.cloud_lesson_projects set requested_outputs = '{video,pptx}' where id = p;
+  j := public.enqueue_cloud_lesson_deck(p);
+  update public.cloud_lesson_projects set status = 'generating_videos' where id = p;
+
+  -- A worker took it and died: processing, with a heartbeat well past the
+  -- five-minute threshold, and no retries left so recovery is terminal.
+  update public.cloud_lesson_jobs
+    set status = 'processing', worker_id = 'dead', attempts = 2, max_attempts = 2,
+        locked_at = now() - interval '20 minutes',
+        heartbeat_at = now() - interval '20 minutes'
+    where id = j;
+
+  -- Any claim call runs the recovery sweep.
+  perform public.claim_cloud_lesson_job('sweeper', array['deck']);
+
+  select status into jst from public.cloud_lesson_jobs where id = j;
+  if jst <> 'failed' then
+    raise exception 'a crashed deck job with no retries left became % instead of failed', jst;
+  end if;
+  select status into st from public.cloud_lesson_projects where id = p;
+  if st = 'failed' then
+    raise exception 'recovering a crashed deck job failed the whole lesson';
+  end if;
+  raise notice 'ok  a crashed deck job fails itself without failing the lesson';
+end $$;
+
 rollback;
