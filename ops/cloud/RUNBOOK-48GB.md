@@ -266,8 +266,16 @@ npm run server:check -- --models-root ~/ComfyUI/models
 
 Reports every problem at once: which services are unreachable and whether they
 were refused or silent, free versus total VRAM, which stages have room, which
-weight files are missing by name, and whether captions shape in all three
-languages. Exit 0 means ready.
+weight files are missing by name, whether captions shape in all three
+languages, **free disk against a 40 GiB working floor**, **whether torch can
+actually see CUDA from a service's own process**, and **which Python modules
+each service cannot import**. Exit 0 means ready.
+
+Those last three were added after this runbook's own dependency list turned out
+to be incomplete. The gap is now a gate: `local_tts_service.py cannot import
+transformers, parler_tts` is printed before a metered hour is spent discovering
+it, and the list is checked against the services' real imports by
+`ops/cloud/test_contracts.py`, so it cannot drift from them again.
 
 Fix everything it names before step 8. The benchmark will refuse otherwise, by
 design.
@@ -279,8 +287,25 @@ npm run bench:lesson -- \
   --models-root ~/ComfyUI/models \
   --languages en-IN,hi-IN,kn-IN \
   --interval 0.25 \
+  --max-minutes 45 \
+  --usd-per-hour 0.33 \
+  --max-usd 2.00 \
   --out ops/cloud/out/benchmark.json
 ```
+
+**Set the two budget flags on a metered box.** `--max-minutes` (default 45)
+aborts between stages once the wall clock is spent; `--max-usd` does the same
+once the estimated spend passes a ceiling, and needs `--usd-per-hour` to mean
+anything. Stages that never started are recorded as `NOT_EXECUTED` with the
+reason, so an aborted report cannot be read as "these stages failed".
+
+The cost in the report is **`estimated`**, never `measured`: elapsed time times
+the rate you typed, not a figure read from a bill. Leave the rate out and the
+cost reads `unknown`, which is honest where zero would not be.
+
+The benchmark starts nothing it has to pay for. It needs an already-running
+host, imports no cloud SDK and shells out to no provisioning CLI; a test
+asserts all three.
 
 Runs plan → translate → keyframe → vision → motion → TTS, then assembles a
 lesson and validates it. Expect 10–30 minutes on a first run, most of it Wan.
