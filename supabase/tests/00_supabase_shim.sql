@@ -38,6 +38,14 @@ create table if not exists storage.objects (
 );
 alter table storage.objects enable row level security;
 
+-- Supabase's storage extension grants these; the shim must too, or every
+-- storage policy test fails with "permission denied for table objects" and
+-- reads as a policy problem rather than a missing grant. RLS still decides
+-- what each role can see -- a GRANT without a matching policy shows nothing.
+grant select, insert, update, delete on storage.objects to service_role;
+grant select on storage.objects to authenticated, anon;
+grant select on storage.buckets to authenticated, anon, service_role;
+
 do $$ begin
   if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
     create publication supabase_realtime;
