@@ -10,7 +10,7 @@ const png = await sharp({ create: { width: 2560, height: 1440, channels: 3, back
 const job: ImageJob = { id: '11111111-1111-4111-8111-111111111111', project_id: '22222222-2222-4222-8222-222222222222', scene_id: '33333333-3333-4333-8333-333333333333', owner_id: 'user_test', kind: 'image', status: 'processing', worker_id: 'test', attempts: 1, max_attempts: 3, prompt: 'A photograph of water evaporating over a warm lake.', negative_prompt: null, parameters: { sceneIndex: 1 } };
 let passed = 0;
 async function test(name: string, fn: () => Promise<void>) { await fn(); console.log(`PASS ${name}`); passed++; }
-async function run(config: { writing?: boolean; unsafe?: boolean; slowCancel?: boolean; missingReference?: boolean; subject?: boolean; last?: boolean; cancel?: boolean; lost?: boolean; index?: number; uploadCancel?: boolean; completeLost?: boolean; badImage?: boolean; signal?: AbortSignal } = {}) {
+async function run(config: { writing?: boolean; unsafe?: boolean; slowCancel?: boolean; missingReference?: boolean; subject?: boolean; last?: boolean; cancel?: boolean; lost?: boolean; index?: number; uploadCancel?: boolean; completeLost?: boolean; badImage?: boolean; signal?: AbortSignal; reusableKeyframe?: string } = {}) {
   let calls = 0; let uploads = 0; let completes = 0; let failures = 0; let references = 0; let cancelled = false;
   let metadata: Record<string, unknown> = {};
   const current = { ...job, attempts: config.last ? 3 : 1, parameters: { sceneIndex: config.index ?? 1, ...(config.index === 2 && !config.missingReference ? { styleReferenceUrl: 'https://storage.test/image.png' } : {}) } };
@@ -24,17 +24,65 @@ async function run(config: { writing?: boolean; unsafe?: boolean; slowCancel?: b
     }
     return { candidates: [{ content: { parts: [{ text: JSON.stringify({ showsSubject: config.subject ?? true, singlePhoto: true, hasWriting: config.writing ?? false, unsafe: config.unsafe ?? false, reason: 'Clear photograph for students.' }) }] } }] };
   } };
+  let lookups = 0; let completedCost = -1;
   const store: CloudImageStore = {
     async claim() { return current; }, async scene() { return { index: current.parameters.sceneIndex, description: job.prompt }; },
+    // Null unless a case asks for reuse, so every existing case still
+    // exercises the generate path exactly as before.
+    async reusableKeyframe() { lookups++; return config.reusableKeyframe ?? null; },
     async reference() { references++; return { mimeType: 'image/png', data: png }; },
     async heartbeat() { return config.lost ? 'lost' : config.cancel || cancelled ? 'cancel' : 'ok'; },
     async upload(_, bytes) { uploads++; assert.equal((await sharp(bytes).metadata()).width, 2560); if (config.uploadCancel) cancelled = true; return 'https://storage.test/result.png'; },
-    async complete(_, __, data) { completes++; metadata = data; return !config.completeLost; },
+    async complete(_, __, data, cost) { completes++; metadata = data; completedCost = cost; return !config.completeLost; },
     async fail(_, code) { failures++; assert.ok(['keyframe_rejected', 'preparation_cancel', 'cloud_image_failed'].includes(code)); return true; },
   };
   const result = await runCloudImageJob({ job: current, store, transport, model: 'gemini-nano-banana-2.1', signal: config.signal, retryDelaysMs: [], heartbeatMs: 5 });
-  return { result, calls, uploads, completes, failures, references, metadata };
+  return { result, calls, uploads, completes, failures, references, metadata, lookups, completedCost };
 }
+// ── Keyframe reuse: the speed path ────────────────────────────────────────
+// A keyframe that already exists for this scene's exact prompt replaces a full
+// diffusion run with one indexed query. The database decides what is reusable;
+// these cases prove the worker honours the answer and records it honestly.
+
+await test('a reusable keyframe skips generation entirely', async () => {
+  const r = await run({ reusableKeyframe: 'https://storage.test/existing.png' });
+  assert.equal(r.result.status, 'completed');
+  assert.equal(r.calls, 0, 'no model call may be made when a keyframe is reused');
+  assert.equal(r.uploads, 0, 'nothing is uploaded: the existing object is referenced');
+  assert.equal(r.references, 0, 'the style reference is not even fetched');
+  assert.equal(r.completes, 1);
+});
+
+await test('a reused keyframe costs nothing and says it was not generated', async () => {
+  const r = await run({ reusableKeyframe: 'https://storage.test/existing.png' });
+  assert.equal(r.result.costUsd, 0, 'a reused keyframe must not carry a cost');
+  // The cost PASSED TO THE DATABASE, which is what a cost report reads.
+  // result.costUsd comes from the meter and would be 0 either way, so a
+  // mutation that charged for a reused keyframe slipped past the first
+  // version of this test.
+  assert.equal(r.completedCost, 0, 'the cost recorded against the job must be 0');
+  assert.equal(r.result.reused, true);
+  assert.equal(r.metadata.reused, true);
+  assert.equal(r.metadata.generated, false,
+    'a cost report must not credit a generation that did not happen');
+  assert.equal(r.metadata.reusedFrom, 'keyframe_prompt_match');
+});
+
+await test('the lookup happens once, before any generation', async () => {
+  const r = await run({ reusableKeyframe: 'https://storage.test/existing.png' });
+  assert.equal(r.lookups, 1, 'asked exactly once');
+});
+
+await test('no reusable keyframe falls through to generating, unchanged', async () => {
+  const r = await run();
+  assert.equal(r.lookups, 1, 'the lookup is always attempted');
+  assert.equal(r.result.status, 'completed');
+  assert.equal(r.calls, 2, 'generation and the vision check both still run');
+  assert.equal(r.uploads, 1);
+  assert.ok(r.result.costUsd > 0, 'a real generation still costs');
+  assert.notEqual(r.result.reused, true);
+});
+
 await test('accepted image saves and completes with measured cost', async () => { const r = await run(); assert.equal(r.result.status, 'completed'); assert.equal(r.calls, 2); assert.equal(r.completes, 1); assert.ok(r.result.costUsd > 0); });
 await test('later scene receives reference bytes', async () => { const r = await run({ index: 2 }); assert.equal(r.references, 1); assert.equal(r.metadata.styleReferenceUsed, true); });
 await test('writing never accepted even final attempt', async () => { const r = await run({ writing: true, last: true }); assert.equal(r.result.status, 'failed'); assert.equal(r.uploads, 0); });

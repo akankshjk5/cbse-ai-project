@@ -2175,6 +2175,10 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      cloud_lesson_reusable_keyframe: {
+        Args: { p_scene_id: string }
+        Returns: string
+      }
       enqueue_cloud_lesson_deck: {
         Args: { p_project_id: string }
         Returns: string

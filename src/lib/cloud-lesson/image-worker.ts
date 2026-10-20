@@ -70,6 +70,16 @@ export async function downloadStyleReference(url: URL, fetcher: typeof fetch = f
 }
 export interface CloudImageStore {
   claim(workerId: string): Promise<ImageJob | null>;
+  /**
+   * An existing keyframe for this scene's exact prompt, or null.
+   *
+   * Asked before generating. A hit replaces a full diffusion run with one
+   * indexed query, which is the difference between minutes of GPU time and
+   * milliseconds. The database decides what may be reused -- same owner or
+   * school, same style, model and curriculum version -- so this cannot widen
+   * the rule by being called from somewhere new.
+   */
+  reusableKeyframe(job: ImageJob): Promise<string | null>;
   /** The picture to draw: the scene's, or for a storybook shot job the shot's. */
   scene(job: ImageJob): Promise<{ index: number; description: string; shotIndex?: number }>;
   reference(job: ImageJob, url: string): Promise<{ mimeType: string; data: Buffer }>;
@@ -84,6 +94,24 @@ export function createCloudImageStore(): CloudImageStore {
     async claim(workerId) {
       const { data, error } = await client.rpc('claim_cloud_lesson_job', { p_worker_id: workerId, p_kinds: ['image'] });
       if (error) throw new Error('Could not claim image job.'); return data?.[0] ? ImageJobSchema.parse(data[0]) : null;
+    },
+    async reusableKeyframe(job) {
+      // A storybook SHOT draws from cloud_lesson_shots.visual_description,
+      // not from the scene's image_prompt, so the scene-keyed lookup would be
+      // answering a different question. Skipped rather than guessed.
+      if (job.shot_id || !job.scene_id) return null;
+      const { data, error } = await client.rpc('cloud_lesson_reusable_keyframe', {
+        p_scene_id: job.scene_id,
+      });
+      // A failed lookup must not fail the job: the worst case is that we
+      // generate the picture, which is what we would have done anyway.
+      if (error) {
+        console.warn('[cloud-image] keyframe reuse lookup failed; generating instead', {
+          jobId: job.id, error: error.message,
+        });
+        return null;
+      }
+      return typeof data === 'string' && data.length > 0 ? data : null;
     },
     async scene(job) {
       const { data: project, error: projectError } = await client.from('cloud_lesson_projects').select('status').eq('id', job.project_id).eq('owner_id', job.owner_id).single();
@@ -132,7 +160,12 @@ export interface RunImageOptions extends Omit<CallOptions, 'stage'> {
   heartbeatMs?: number;
   onStage?: (stage: string, progress: number) => void;
 }
-export type ImageRunResult = { status: 'completed' | 'failed' | 'cancelled' | 'lost' | 'shutdown'; costUsd: number };
+export type ImageRunResult = {
+  status: 'completed' | 'failed' | 'cancelled' | 'lost' | 'shutdown';
+  costUsd: number;
+  /** True when an existing keyframe was reused and no image was generated. */
+  reused?: boolean;
+};
 
 /** Process one claimed job. Its heartbeat is alive even during long Gemini calls. */
 export async function runCloudImageJob(options: RunImageOptions): Promise<ImageRunResult> {
@@ -188,6 +221,28 @@ export async function runCloudImageJob(options: RunImageOptions): Promise<ImageR
   try {
     await checkpoint('claimed', 1);
     const scene = await options.store.scene(job);
+
+    // Before any GPU work, and before fetching the style reference: has this
+    // exact picture already been drawn?
+    //
+    // The case this exists for is a retry. A lesson that failed partway is not
+    // a reusable source at the lesson level -- reserve_cloud_lesson requires a
+    // succeeded project -- so without this, every keyframe that had already
+    // succeeded is drawn again. For a 60-second lesson that is up to eight
+    // diffusion runs redone because one of them ran out of memory.
+    const reused = await options.store.reusableKeyframe(job);
+    if (reused) {
+      await checkpoint('reuse-keyframe', 90);
+      // costUsd 0 and generated: false, so a cost report cannot credit a
+      // generation that did not happen. The vision check is skipped because
+      // the source keyframe only reached `succeeded` by passing one.
+      if (!await options.store.complete(job, reused, {
+        sceneIndex: scene.index, reused: true, generated: false,
+        reusedFrom: 'keyframe_prompt_match',
+      }, 0)) throw new PreparationStopped('lost');
+      return { status: 'completed', costUsd: 0, reused: true };
+    }
+
     await checkpoint('style-reference', 10);
     const styleReference = job.parameters.styleReferenceUrl ? await options.store.reference(job, job.parameters.styleReferenceUrl) : undefined;
     if (needsStyleReference(job) && !styleReference) throw new Error('Missing style reference.');
