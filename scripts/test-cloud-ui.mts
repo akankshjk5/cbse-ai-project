@@ -2,8 +2,20 @@ import assert from 'node:assert/strict';
 import { cloudLessonKeys, cloudLessonProgress } from '../src/lib/cloud-lesson/progress.ts';
 import { cloudLessonApiError } from '../src/lib/cloud-lesson/api-errors.ts';
 import { formatCloudLessonReport, summarizeCloudLesson } from '../src/lib/cloud-lesson/report.ts';
-import { CLOUD_LESSON_STYLE_COPY, CLOUD_LESSON_VISUAL_STYLES, CreateCloudLessonSchema, cloudLessonAnimationCap, cloudLessonPictureCount,
-  cloudLessonStorybookEstimateUsd, type CloudLessonProject, type CloudLessonJobProgress } from '../src/lib/videos/cloud-lesson-contracts.ts';
+import {
+  CLOUD_LESSON_JOB_PUBLIC_COLUMNS,
+  CLOUD_LESSON_STYLE_COPY,
+  CLOUD_LESSON_VISUAL_STYLES,
+  CloudLessonJobKindSchema,
+  CloudLessonJobProgressSchema,
+  CreateCloudLessonSchema,
+  cloudLessonAnimationCap,
+  cloudLessonPictureCount,
+  cloudLessonStorybookEstimateUsd,
+  deckUrlFor,
+  type CloudLessonJobProgress,
+  type CloudLessonProject,
+} from '../src/lib/videos/cloud-lesson-contracts.ts';
 const base = { target_duration_seconds: 60, status: 'preparing', reused_from_project_id: null } as CloudLessonProject;
 const job = (kind: CloudLessonJobProgress['kind'], status = 'succeeded', progress = 100) => ({ kind, status, progress } as CloudLessonJobProgress);
 const input = { classLevel: 6, subject: ' SCIENCE ', topic: 'Water   cycle', languageCode: 'en-IN' };
@@ -80,4 +92,95 @@ assert.equal(lessonReport.wallSeconds, 480); assert.ok(lessonReport.storybookEst
 assert.ok(formatCloudLessonReport(reportProject, lessonReport).includes('start to finish  8m 00s'));
 assert.equal(summarizeCloudLesson({ ...reportProject, visual_style: 'illustrated' }, [], .035).storybookEstimateUsd, null);
 assert.equal(summarizeCloudLesson({ ...reportProject, completed_at: null }, [], .035).wallSeconds, null);
+// ── The client's job kinds must be the database's job kinds ───────────────
+//
+// 20261019140000 added 'deck' to the kind CHECK on cloud_lesson_jobs and
+// CloudLessonJobKindSchema was not updated. loadCloudLesson parses every job
+// row through it, so the first lesson with a deck job made
+// GET /api/cloud-lessons/{id} throw, and a teacher saw an error instead of
+// their lesson. Nothing caught it: the enum and the constraint live in
+// different languages and no test had ever compared them.
+{
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+
+  const dir = 'supabase/migrations';
+  // The LAST migration that redefines the constraint is the one in force.
+  let allowed: string[] | null = null;
+  for (const file of readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()) {
+    const sql = readFileSync(join(dir, file), 'utf8');
+    for (const match of sql.matchAll(
+      /constraint\s+cloud_lesson_jobs_kind_check\s+check\s*\(\s*kind\s+in\s*\(([^)]*)\)/gi)) {
+      allowed = [...match[1]!.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]!);
+    }
+    for (const match of sql.matchAll(
+      /check\s*\(\s*kind\s+in\s*\(([^)]*)\)\s*\)/gi)) {
+      if (/cloud_lesson_jobs/.test(sql)) {
+        allowed = [...match[1]!.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]!);
+      }
+    }
+  }
+
+  assert.ok(allowed && allowed.length >= 4,
+    `could not read the job-kind constraint out of ${dir}; the scan is broken`);
+  const fromDb = [...allowed!].sort();
+  const fromClient = [...CloudLessonJobKindSchema.options].sort();
+  assert.deepEqual(
+    fromClient, fromDb,
+    `the client accepts [${fromClient}] but the database allows [${fromDb}]. `
+    + 'A kind the client does not know makes loadCloudLesson throw for every '
+    + 'lesson that has one.');
+  console.log(`Cloud UI contracts: job kinds agree with the database (${fromDb.join(', ')}).`);
+}
+
+// Every field the schema requires must be a column the query selects.
+//
+// loadCloudLesson does `.select(CLOUD_LESSON_JOB_PUBLIC_COLUMNS)` and then
+// parses the rows with CloudLessonJobProgressSchema. A field in the schema but
+// not in the string comes back absent, and the parse throws for every lesson
+// -- the same shape of failure as the deck-kind drift above, through a
+// different crack. Mutation-tested: removing output_url from the string fails
+// this and nothing else.
+{
+  const selected = new Set(
+    CLOUD_LESSON_JOB_PUBLIC_COLUMNS.split(',').map((column) => column.trim()));
+  const required = Object.keys(CloudLessonJobProgressSchema.shape);
+  assert.ok(required.length > 5, 'the schema shape could not be read');
+  for (const field of required) {
+    assert.ok(selected.has(field),
+      `CloudLessonJobProgressSchema requires "${field}" but `
+      + `CLOUD_LESSON_JOB_PUBLIC_COLUMNS does not select it, so every job row `
+      + `would fail to parse`);
+  }
+  console.log(`Cloud UI contracts: all ${required.length} job fields are selected by the query.`);
+}
+
+// deckUrlFor is the single answer to "is there a deck, and where".
+{
+  const base = {
+    id: '11111111-1111-4111-8111-111111111111', scene_id: null,
+    progress: 100, attempts: 1, max_attempts: 2,
+    started_at: null, completed_at: null, error_message: null,
+  } as const;
+  const url = 'https://example.test/lesson.pptx';
+
+  assert.equal(deckUrlFor([]), null, 'no jobs means no deck');
+  assert.equal(
+    deckUrlFor([{ ...base, kind: 'assemble', status: 'succeeded', output_url: url }]),
+    null, 'an assembled VIDEO must not be offered as a deck');
+  assert.equal(
+    deckUrlFor([{ ...base, kind: 'deck', status: 'processing', output_url: null }]),
+    null, 'a deck still being built is not a deck');
+  assert.equal(
+    deckUrlFor([{ ...base, kind: 'deck', status: 'failed', output_url: null }]),
+    null, 'a failed deck is not a deck');
+  assert.equal(
+    deckUrlFor([{ ...base, kind: 'deck', status: 'succeeded', output_url: null }]),
+    null, 'a succeeded deck with no URL is not downloadable, so it is not offered');
+  assert.equal(
+    deckUrlFor([{ ...base, kind: 'deck', status: 'succeeded', output_url: url }]),
+    url, 'a finished deck must be reachable');
+  console.log('Cloud UI contracts: deckUrlFor offers only a finished, downloadable deck.');
+}
+
 console.log('Cloud UI contracts: cache keys, all progress states, reuse progress, request validation, safe refusal messages, storybook and the lesson report passed.');

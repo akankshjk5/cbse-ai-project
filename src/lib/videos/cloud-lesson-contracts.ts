@@ -177,7 +177,13 @@ export const CloudLessonSceneStatusSchema = z.enum([
 export const CloudLessonMotionModeSchema = z.enum(['animate', 'still']);
 export type CloudLessonMotionMode = z.infer<typeof CloudLessonMotionModeSchema>;
 
-export const CloudLessonJobKindSchema = z.enum(['prepare', 'image', 'video', 'assemble']);
+// Must match the kind CHECK on cloud_lesson_jobs. 20261019140000 added 'deck'
+// to the database and this enum was not updated, so every lesson carrying a
+// deck job failed to load: loadCloudLesson parses each row through
+// CloudLessonJobProgressSchema, and an unknown kind throws. The drift between
+// the two is now asserted by scripts/test-cloud-ui.mts, which reads the
+// constraint out of the migrations.
+export const CloudLessonJobKindSchema = z.enum(['prepare', 'image', 'video', 'assemble', 'deck']);
 export type CloudLessonJobKind = z.infer<typeof CloudLessonJobKindSchema>;
 
 export const CloudLessonJobStatusSchema = z.enum([
@@ -282,9 +288,16 @@ export const CloudLessonShotSchema = z.object({
 });
 export type CloudLessonShot = z.infer<typeof CloudLessonShotSchema>;
 
-/** Job columns safe to show a teacher: no worker ids, prompts or provider ids. */
+/**
+ * Job columns safe to show a teacher: no worker ids, prompts or provider ids.
+ *
+ * `output_url` is included because it is the only way a teacher reaches a
+ * finished deck -- the deck worker uploads it and records it here, and no
+ * other column carries it. It is a URL to an asset of their own lesson, which
+ * they already receive as `final_video_url` and as each scene's `video_url`.
+ */
 export const CLOUD_LESSON_JOB_PUBLIC_COLUMNS =
-  'id, kind, scene_id, status, progress, attempts, max_attempts, started_at, completed_at, error_message';
+  'id, kind, scene_id, status, progress, attempts, max_attempts, started_at, completed_at, error_message, output_url';
 
 export const CloudLessonJobProgressSchema = z.object({
   id: z.string().uuid(),
@@ -297,8 +310,22 @@ export const CloudLessonJobProgressSchema = z.object({
   started_at: z.string().nullable(),
   completed_at: z.string().nullable(),
   error_message: z.string().nullable(),
+  output_url: z.string().url().nullable(),
 });
 export type CloudLessonJobProgress = z.infer<typeof CloudLessonJobProgressSchema>;
+
+/**
+ * The finished deck for a lesson, or null.
+ *
+ * One place that answers it, so a caller cannot get the rule subtly wrong:
+ * the deck job must have SUCCEEDED and must carry a URL. A deck job that
+ * finished while scenes were outstanding still produced a file and still
+ * counts; that distinction belongs to the lesson's own status, not here.
+ */
+export function deckUrlFor(jobs: readonly CloudLessonJobProgress[]): string | null {
+  const deck = jobs.find((job) => job.kind === 'deck' && job.status === 'succeeded');
+  return deck?.output_url ?? null;
+}
 
 // ── The prepare job's output ────────────────────────────────────────────────
 // What a prep worker hands to `complete_cloud_lesson_preparation` as p_scenes.
