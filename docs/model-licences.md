@@ -1,8 +1,10 @@
 # Model licence audit
 
 **Verified 18 October 2026** against the official Hugging Face repositories,
-except the two rows marked NOT verified, which were added on 20 October 2026
-after a test found the code loads twelve models and this audit listed ten.
+plus two rows added and verified on 20 October 2026 after a test found the code
+loads twelve models while this audit listed ten. All twelve rows are now
+publisher-verified; the one remaining open question is Q1, which is about
+provenance rather than about a licence tag.
 Re-verify before a tender submission: a model card can change, and a licence
 tag is metadata the publisher can edit at any time.
 
@@ -35,8 +37,8 @@ assumption this audit exists to avoid.
 | Vision check | [`Qwen/Qwen2.5-VL-7B-Instruct`](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) | `apache-2.0` | Permitted | The **7B** is Apache-2.0. Larger Qwen-VL variants have historically used a custom licence — do not substitute a bigger one without re-checking |
 | Speech | [`ai4bharat/indic-parler-tts`](https://huggingface.co/ai4bharat/indic-parler-tts) | `apache-2.0` | Permitted | **See Q2** |
 | Translation | [`ai4bharat/indictrans2-en-indic-1B`](https://huggingface.co/ai4bharat/indictrans2-en-indic-1B) | `mit` | Permitted | **See Q3** |
-| Listen-back ASR | [`openai/whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | `apache-2.0` *claimed, NOT verified* | **See Q5** | Loaded by `local_tts_service.py` to transcribe each take. Added 20 October 2026 |
-| Speech description tokenizer | [`google/flan-t5-large`](https://huggingface.co/google/flan-t5-large) | `apache-2.0` *claimed, NOT verified* | **See Q5** | Tokenizer files only; Indic Parler-TTS conditions on a flan-t5 description encoder. Added 20 October 2026 |
+| Listen-back ASR | [`openai/whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | `mit` | Permitted | Loaded by `local_tts_service.py` to transcribe each take. Added and verified 20 October 2026. **MIT, not Apache-2.0** — recorded wrongly when first added |
+| Speech description tokenizer | [`google/flan-t5-large`](https://huggingface.co/google/flan-t5-large) | `apache-2.0` | Permitted | Tokenizer files only. Added and verified 20 October 2026. Card advises a safety assessment before using the model directly; Lumina uses only its tokenizer, so it generates no text |
 
 ## What was confirmed beyond the licence
 
@@ -87,22 +89,27 @@ the agreement is accepted once under the account that fetches the weights.
 *Resolve by:* accepting the gate manually on the deployment account and
 recording who accepted it and when.
 
-**Q5 — Two models were missing from this audit entirely.**
+**Q5 — RESOLVED 20 October 2026. Two models were missing from this audit.**
 `openai/whisper-large-v3-turbo` and `google/flan-t5-large` are both loaded by
 `local_tts_service.py` — the first transcribes every narration take for the
 listen-back check, the second tokenises the voice description Indic Parler-TTS
-conditions on. Neither appeared in this document until 20 October 2026, when
-`ops/cloud/models.json` was written and a test compared the two lists.
+conditions on. Neither appeared in this document until `ops/cloud/models.json`
+was written and a test compared the two lists.
 
 The audit said it covered the stack. It covered ten of twelve models.
 
-Both are widely used under Apache-2.0 and neither licence is expected to be a
-problem, but **expected is not verified**: no one has opened either repository
-for this audit, so they are recorded as claimed rather than confirmed, and
-`models.json` carries `licence_resolved: false` for both.
+Both model cards have now been read. **Whisper large-v3-turbo is MIT**, not
+Apache-2.0 as it was first recorded here — permissive either way, but the
+first entry was a guess dressed as a finding, which is the thing this document
+exists not to do. **flan-t5-large is Apache-2.0** as expected. Neither is
+gated and neither needs an access agreement.
 
-*Resolve by:* opening both model cards, confirming the licence tag and any use
-restriction, and recording the date here as the rest of the table does.
+flan-t5-large's card advises a safety and fairness assessment before using the
+model directly. That is a usage guideline rather than a licence term, and
+Lumina loads only its tokenizer files, so it generates no text and the
+guideline does not bite.
+
+Nothing further is outstanding on these two.
 
 **Q4 — Repackaged repositories carry a redistributor's tag.**
 Both Comfy-Org repositories declare Apache-2.0 for files they redistribute. For
