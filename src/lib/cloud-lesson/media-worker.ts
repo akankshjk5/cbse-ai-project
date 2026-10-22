@@ -76,6 +76,21 @@ export async function pickLessonMusic(dir: string | undefined, projectId: string
 export interface CloudMediaStore {
   claim(workerId: string, kinds: ('video' | 'assemble')[]): Promise<MediaJob | null>;
   bundle(job: MediaJob): Promise<MediaBundle>;
+  /**
+   * An existing raw clip for this scene's exact prompt AND keyframe, with the
+   * project it belongs to, or null.
+   *
+   * Asked before Wan runs. Wan is the most expensive stage in the pipeline --
+   * a 1800s timeout against 900s for a keyframe -- so a hit here saves more
+   * than anywhere else.
+   *
+   * The project id matters: `mediaAssetUrl` pins an asset URL to one
+   * project's storage path, and a reused clip lives under the SOURCE
+   * project's. The database decides what may be reused and says which project
+   * it came from, so the worker scopes the download to that answer rather
+   * than widening the check.
+   */
+  reusableClip(job: MediaJob): Promise<{ url: string; sourceProjectId: string } | null>;
   heartbeat(job: MediaJob, progress: number, providerId?: string): Promise<HeartbeatState>;
   upload(job: MediaJob, path: string, label: string): Promise<string>;
   complete(job: MediaJob, url: string, metadata: Record<string, unknown>, cost: number): Promise<boolean>;
@@ -85,6 +100,30 @@ export interface CloudMediaStore {
 export function createCloudMediaStore(): CloudMediaStore {
   const client = createAdminClient();
   return {
+    async reusableClip(job) {
+      // Only a scene-bound video job can have a clip to reuse, and only
+      // when lesson-level reuse has not already supplied one.
+      if (job.kind !== 'video' || !job.scene_id || job.parameters.reusedFromProjectId) {
+        return null;
+      }
+      const { data, error } = await client.rpc('cloud_lesson_reusable_clip', {
+        p_scene_id: job.scene_id,
+      });
+      // Failing open: the worst case is that Wan runs, which is what would
+      // have happened anyway. Failing closed would turn a lookup outage
+      // into a generation outage.
+      if (error) {
+        console.warn('[cloud-media] clip reuse lookup failed; generating instead', {
+          jobId: job.id, error: error.message,
+        });
+        return null;
+      }
+      const row = Array.isArray(data) ? data[0] : data;
+      const url = row?.raw_video_url;
+      const sourceProjectId = row?.source_project_id;
+      if (typeof url !== 'string' || !url || typeof sourceProjectId !== 'string') return null;
+      return { url, sourceProjectId };
+    },
     async claim(workerId, kinds) {
       const { data, error } = await client.rpc('claim_cloud_lesson_job', { p_worker_id: workerId, p_kinds: kinds });
       if (error) throw new Error('Could not claim cloud media job.');
@@ -229,7 +268,13 @@ export interface RunMediaOptions {
   usdPerSecond?: number; download?: typeof downloadMedia;
   /** Storybook music folder; defaults to CLOUD_LESSON_MUSIC_DIR, '' turns music off. */
   musicDir?: string;
-  assetUrl?: (url: string, provider: boolean) => URL;
+  /**
+   * `projectId` overrides which project's storage path the URL must sit under.
+   * Used for a reused clip, whose bytes live under the SOURCE project. It is
+   * an argument rather than a second code path so that every asset URL in this
+   * worker is still validated in one place.
+   */
+  assetUrl?: (url: string, provider: boolean, projectId?: string) => URL;
   onStage?: (stage: string, progress: number) => void;
 }
 export async function runCloudMediaJob(options: RunMediaOptions) {
@@ -257,12 +302,12 @@ export async function runCloudMediaJob(options: RunMediaOptions) {
   const checkpoint = async (stage: string, percent: number) => {
     progress = Math.max(progress, percent); await beat(); options.onStage?.(stage, progress);
   };
-  const assetUrl = options.assetUrl ?? ((url, provider) => mediaAssetUrl(url,
-    job.kind === 'video' && job.parameters.reusedFromProjectId
-      ? z.string().uuid().parse(job.parameters.reusedFromProjectId) : job.project_id, publicEnv.supabaseUrl,
+  const assetUrl = options.assetUrl ?? ((url, provider, projectId) => mediaAssetUrl(url,
+    projectId ?? (job.kind === 'video' && job.parameters.reusedFromProjectId
+      ? z.string().uuid().parse(job.parameters.reusedFromProjectId) : job.project_id), publicEnv.supabaseUrl,
     provider ? serverEnv.cloudLessonProviderMediaHosts : undefined));
-  const download = async (url: string, path: string, provider = false) => {
-    await beat(); await (options.download ?? downloadMedia)(assetUrl(url, provider), path); await beat();
+  const download = async (url: string, path: string, provider = false, projectId?: string) => {
+    await beat(); await (options.download ?? downloadMedia)(assetUrl(url, provider, projectId), path); await beat();
   };
   const retryProvider = async <T,>(fn: () => Promise<T>): Promise<T> => {
     for (let attempt = 0; ; attempt++) {
@@ -300,7 +345,28 @@ export async function runCloudMediaJob(options: RunMediaOptions) {
         await download(scene.image_url, image);
       }
       let rawClip: string | undefined;
-      if (scene.motion_mode === 'animate' && job.parameters.reusedFromProjectId) {
+      // Before Wan: has this exact motion over this exact keyframe already
+      // been rendered? Asked only when lesson-level reuse did not already
+      // supply a clip, and scoped to the project the database names.
+      const reusableClip = scene.motion_mode === 'animate' && !job.parameters.reusedFromProjectId
+        ? await options.store.reusableClip(job)
+        : null;
+
+      if (scene.motion_mode === 'animate' && reusableClip) {
+        rawClip = join(dir, 'raw.mp4');
+        await checkpoint('reuse-animation', 55);
+        // Scoped to the SOURCE project, because that is where the bytes live
+        // and an asset URL is pinned to one project's path. The database
+        // authorised this project id; nothing here widens the check, and it
+        // goes through the same seam as every other download in this worker.
+        await download(reusableClip.url, rawClip, false, reusableClip.sourceProjectId);
+        metadata.rawVideoUrl = reusableClip.url;
+        metadata.reusedClipFromProjectId = reusableClip.sourceProjectId;
+        // No provider ran, so nothing is charged and nothing claims to have
+        // been generated.
+        metadata.clipReused = true;
+        metadata.generated = false;
+      } else if (scene.motion_mode === 'animate' && job.parameters.reusedFromProjectId) {
         const rawUrl = z.string().url().parse(job.parameters.reusedRawVideoUrl);
         rawClip = join(dir, 'raw.mp4');
         await checkpoint('reuse-animation', 55);

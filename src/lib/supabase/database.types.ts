@@ -2175,6 +2175,10 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      cloud_lesson_reusable_clip: {
+        Args: { p_scene_id: string }
+        Returns: { raw_video_url: string; source_project_id: string }[]
+      }
       cloud_lesson_reusable_keyframe: {
         Args: { p_scene_id: string }
         Returns: string

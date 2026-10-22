@@ -16,6 +16,7 @@ process.env.EXTERNAL_PROVIDERS = 'motion';
 const id = '11111111-1111-4111-8111-111111111111';
 const project = '22222222-2222-4222-8222-222222222222';
 const providerId = '33333333-3333-4333-8333-333333333333';
+const sourceProject = '55555555-5555-4555-8555-555555555555';
 const job: MediaJob = { id, project_id: project, scene_id: id, owner_id: 'user_test', kind: 'video', status: 'processing',
   worker_id: 'worker', attempts: 1, max_attempts: 2, provider_request_id: null, cost_usd: 0,
   prompt: 'Start with calm water. Then show steam rising. End with visible vapor.', negative_prompt: 'text, logos',
@@ -32,7 +33,8 @@ async function test(name: string, fn: () => Promise<void>) { await fn(); console
 async function run(config: { short?: boolean; reuse?: boolean; still?: boolean; assemble?: boolean; resume?: boolean; charged?: boolean; cancel?: boolean;
   lost?: boolean; cancelPoll?: boolean; lostPoll?: boolean; uploadCancel?: boolean; terminal?: boolean; ambiguous?: boolean;
   renderFail?: boolean; completeLost?: boolean; signal?: AbortSignal;
-  storybook?: boolean; noShots?: boolean; musicDir?: string; projectId?: string } = {}) {
+  storybook?: boolean; noShots?: boolean; musicDir?: string; projectId?: string;
+  reusableClip?: string; reusableClipProject?: string } = {}) {
   const style = config.storybook ? 'storybook' : 'illustrated';
   const manifests: Record<string, unknown>[] = [];
   let submits = 0; let polls = 0; let cancels = 0; let uploads = 0; let completed = 0; let failed = 0; let renders = 0;
@@ -55,8 +57,17 @@ async function run(config: { short?: boolean; reuse?: boolean; still?: boolean; 
         : { status: 'completed', request_id: providerId, video: { url: 'https://cdn.higgs.ai/raw.mp4' } }; },
     async cancel() { cancels++; },
   };
+  let clipLookups = 0;
   const store: CloudMediaStore = {
     async claim() { return current; },
+    // Null unless a case asks for reuse, so every existing case still
+    // exercises the provider path exactly as before.
+    async reusableClip() {
+      clipLookups++;
+      return config.reusableClip
+        ? { url: config.reusableClip, sourceProjectId: config.reusableClipProject ?? sourceProject }
+        : null;
+    },
     async bundle() { return { language: 'en-IN', durationSeconds: config.short ? 30 : 60, visualStyle: style, narrationUrl: 'https://storage.test/narration.wav',
       scenes: config.assemble ? Array.from({ length: config.short ? 4 : 8 }, (_, i) => ({ ...scene, ...storyScene, scene_index: i + 1,
         video_url: `https://storage.test/${i}.mp4`, status: 'succeeded' })) : [{ ...scene, ...storyScene, motion_mode: config.still ? 'still' : 'animate' }],
@@ -70,13 +81,17 @@ async function run(config: { short?: boolean; reuse?: boolean; still?: boolean; 
     assert.equal(manifest.durationSeconds, config.short ? 30 : 60);
     assert.equal(manifest.visualStyle, style);
     manifests.push(manifest); renders++; if (config.renderFail) throw new Error('secret provider body');
-    assert.equal(persisted.includes(providerId), !config.still && !config.assemble && !config.reuse);
+    // A provider request id is persisted only when a provider actually ran.
+    // Four cases skip it: a still scene, an assemble job, lesson-level reuse,
+    // and now a reused raw clip.
+    assert.equal(persisted.includes(providerId),
+      !config.still && !config.assemble && !config.reuse && !config.reusableClip);
     await writeFile(String(manifest.output), 'fake mp4'); return { width: 1920, height: 1080, durationSeconds: config.assemble ? 60 : 7.5 };
   } };
   const result = await runCloudMediaJob({ job: current, store, provider, renderer, heartbeatMs: 5, pollMs: 0,
     usdPerSecond: .035, signal: config.signal, assetUrl: url => new URL(url), musicDir: config.musicDir ?? '',
     download: async (url, path) => { downloads.push(url.href); await writeFile(path, 'fake source'); } });
-  return { result, submits, polls, cancels, uploads, completed, failed, renders, persisted, keys, downloads, metadata, manifests };
+  return { result, submits, polls, cancels, uploads, completed, failed, renders, persisted, keys, downloads, metadata, manifests, clipLookups };
 }
 await test('animation persisted, raw retained, scene composed and completed', async () => {
   const r = await run(); assert.equal(r.result.status, 'completed'); assert.equal(r.submits, 1); assert.equal(r.uploads, 2);
@@ -88,6 +103,73 @@ await test('30-second assembly sends four scenes, duration and style to the rend
   assert.equal(r.downloads.length, 5);
   assert.equal(r.submits, 0);
 });
+// ── Clip reuse: skipping the most expensive stage ─────────────────────────
+// Wan's timeout is 1800s against 900s for a keyframe, so a hit here saves more
+// than anywhere else. These cases prove the worker honours the database's
+// answer, scopes the download to the project the database named, and records
+// honestly that nothing was generated.
+
+await test('a reusable clip skips the provider entirely', async () => {
+  const r = await run({ reusableClip: `https://storage.test/storage/v1/object/public/cloud-lesson-assets/${sourceProject}/media/raw.mp4` });
+  assert.equal(r.result.status, 'completed');
+  assert.equal(r.submits, 0, 'no provider submit when a clip is reused');
+  assert.equal(r.polls, 0, 'and nothing to poll');
+  assert.equal(r.result.costUsd, 0, 'a reused clip must not carry a cost');
+  assert.equal(r.clipLookups, 1, 'asked exactly once');
+});
+
+await test('a reused clip records that nothing was generated', async () => {
+  const url = `https://storage.test/storage/v1/object/public/cloud-lesson-assets/${sourceProject}/media/raw.mp4`;
+  const r = await run({ reusableClip: url });
+  assert.equal(r.metadata.clipReused, true);
+  assert.equal(r.metadata.generated, false,
+    'a cost report must not credit a Wan run that did not happen');
+  assert.equal(r.metadata.rawVideoUrl, url);
+  assert.equal(r.metadata.reusedClipFromProjectId, sourceProject,
+    'the source project is recorded, so a reused clip can be traced');
+});
+
+await test('a still scene is never asked for a clip', async () => {
+  const r = await run({ still: true });
+  assert.equal(r.clipLookups, 0,
+    'a still scene is FFmpeg zoompan; there is no Wan run to skip');
+});
+
+await test('lesson-level reuse takes precedence and skips the lookup', async () => {
+  const r = await run({ reuse: true });
+  assert.equal(r.clipLookups, 0,
+    'a clip already supplied by lesson-level reuse must not be looked up again');
+});
+
+await test('no reusable clip falls through to the provider, unchanged', async () => {
+  const r = await run();
+  assert.equal(r.clipLookups, 1, 'the lookup is always attempted for an animate scene');
+  assert.equal(r.result.status, 'completed');
+  assert.ok(r.submits > 0, 'the provider still runs when there is nothing to reuse');
+  assert.notEqual(r.metadata.clipReused, true);
+});
+
+// The security property, asserted against the control itself rather than
+// through the harness: the harness overrides assetUrl with `url => new URL(url)`,
+// which accepts anything, so a case run through it would prove nothing. A
+// reused clip is validated against the SOURCE project the database named, and a
+// URL outside that project's path must be refused.
+await test('a reused clip URL is pinned to the project the database named', () => {
+  const base = 'https://db.test/storage/v1/object/public/cloud-lesson-assets';
+  // Under the named source project: accepted.
+  assert.doesNotThrow(() =>
+    mediaAssetUrl(`${base}/${sourceProject}/media/raw.mp4`, sourceProject, 'https://db.test'));
+  // Under a different project: refused, even though it is a real asset path.
+  assert.throws(() =>
+    mediaAssetUrl(`${base}/99999999-9999-4999-8999-999999999999/media/raw.mp4`,
+      sourceProject, 'https://db.test'), /Invalid lesson asset URL/);
+  // And a foreign origin is refused whatever the path says.
+  assert.throws(() =>
+    mediaAssetUrl(`https://evil.test/storage/v1/object/public/cloud-lesson-assets/${sourceProject}/media/raw.mp4`,
+      sourceProject, 'https://db.test'), /Invalid lesson asset URL/);
+  return Promise.resolve();
+});
+
 await test('reused animation composes new captions without submitting or polling Higgsfield', async () => {
   const r = await run({ reuse: true }); assert.equal(r.result.status, 'completed');
   assert.equal(r.submits + r.polls, 0); assert.equal(r.result.costUsd, 0);
