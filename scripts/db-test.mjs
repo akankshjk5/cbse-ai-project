@@ -36,7 +36,7 @@ import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 
 const SUITES = ['shared_asset_reuse', 'asset_lifecycle', 'source_rights', 'reuse_concurrency',
-  'deck_jobs', 'storage_isolation', 'video_lifecycle', 'keyframe_reuse', 'clip_reuse'];
+  'deck_jobs', 'storage_isolation', 'video_lifecycle', 'keyframe_reuse', 'clip_reuse', 'reuse_scope'];
 const args = process.argv.slice(2);
 const keep = args.includes('--keep');
 const only = args.includes('--suite') ? args[args.indexOf('--suite') + 1] : null;

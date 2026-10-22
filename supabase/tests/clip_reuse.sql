@@ -137,6 +137,27 @@ begin
   raise notice 'ok  no clip crosses a tenant boundary';
 end $$;
 
+-- 3b. And not between two teachers who belong to NO school. keyframe_reuse.sql
+--     had this property and this file did not, which a mutation found: dropping
+--     the `p_school is not null` guard from the shared predicate leaked past
+--     clip_reuse while both other suites caught it. `null = null` is null in
+--     SQL, so the rule happens to be right without the guard -- but a copy
+--     written with `is not distinct from` would treat every schoolless teacher
+--     as every other one's colleague.
+do $$
+declare ask uuid; url text;
+begin
+  perform pg_temp.clip_source('olive', null, 'https://example.test/noschool.png',
+    'a slow push towards the diagram');
+  ask := pg_temp.clip_asker('peter', null, 'https://example.test/noschool.png',
+    'a slow push towards the diagram');
+  select raw_video_url into url from public.cloud_lesson_reusable_clip(ask);
+  if url is not null then
+    raise exception 'LEAK: a clip was reused between two schoolless teachers (%)', url;
+  end if;
+  raise notice 'ok  two schoolless teachers do not share clips';
+end $$;
+
 -- 4. A DIFFERENT KEYFRAME is a different clip, even with identical motion.
 --    This is the property that separates clip reuse from keyframe reuse: Wan
 --    animates one specific picture.

@@ -12,6 +12,31 @@
  * which is the whole point: FFmpeg re-runs, the GPU does not.
  */
 
+/**
+ * STATUS, 2026-10-23: no production consumer.
+ *
+ * These keys are covered by `npm run test:lesson-spec` and are imported by
+ * nothing else. Reuse in the running system is decided elsewhere and by
+ * different means, which is worth knowing before assuming this module is on
+ * the path:
+ *
+ *   - lesson level: `reserve_cloud_lesson` matches on `content_key`,
+ *     `visual_style`, `language_code`, `generator_version` and friends.
+ *   - keyframe level: `cloud_lesson_reusable_keyframe` matches a scene's
+ *     stored `image_prompt`.
+ *   - clip level: `cloud_lesson_reusable_clip` matches the motion prompt and
+ *     the keyframe it animated.
+ *
+ * All three live in SQL, so the decision happens where the candidate rows
+ * are and stays one indexed query. Content-addressed keys computed in
+ * TypeScript would need a column to compare against before they could
+ * replace any of that.
+ *
+ * Kept rather than deleted because `LessonSpec` is the canonical shape the
+ * pipeline is moving towards, and these are its identity functions. But
+ * nothing here affects a running lesson today.
+ */
+
 import { createHash } from 'node:crypto';
 
 import type { Language, LessonSpec, Scene } from './schema';

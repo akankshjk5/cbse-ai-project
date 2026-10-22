@@ -250,7 +250,11 @@ export function createCloudMediaRenderer(): CloudMediaRenderer {
     child.stdout.on('data', chunk => { stdout = (stdout + String(chunk)).slice(-16_000); });
     child.stderr.on('data', chunk => { stderr = (stderr + String(chunk)).slice(-4_000); });
     child.on('error', error => { clearTimeout(timer); reject(error); });
-    child.on('close', code => { clearTimeout(timer); code === 0 ? resolveCall(stdout) : reject(new Error(`Cloud composition failed: ${stderr}`)); });
+    child.on('close', code => {
+      clearTimeout(timer);
+      if (code === 0) resolveCall(stdout);
+      else reject(new Error(`Cloud composition failed: ${stderr}`));
+    });
   });
   return {
     async preflight() { await invoke(['--preflight', '--config', JSON.stringify(config)]); },
